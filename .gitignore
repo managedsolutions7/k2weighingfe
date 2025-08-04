@@ -1,0 +1,79 @@
+# dependencies
+node_modules/
+.pnpm/
+.pnp.*
+# production
+dist/
+build/
+dist-ssr/
+# misc
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.tgz
+
+# testing
+coverage/
+.nyc_output/
+*.lcov
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# typescript
+*.tsbuildinfo
+
+# env files
+.env
+.env.*
+!.env.example
+
+# Husky
+.husky/_/
+.husky/*.lock
+
+# lint-staged
+.lintstagedrc
+.lintstagedrc.*
+
+# Prettier
+.prettier*
+!.prettierrc
+
+
+# local babel config
+.babelrc
+.babelrc.*
+
+# local eslint config
+.eslintrc*
+!.eslintrc.cjs
+!.eslintrc.js
+
+# Editor directories and files
+*.swp
+
+# Optional: OS-specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Optional: yarn v2
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
