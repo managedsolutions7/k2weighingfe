@@ -1,0 +1,33 @@
+import { Link, Outlet } from 'react-router-dom';
+import Header from '@/components/common/Header';
+
+const OperatorLayout = () => {
+  return (
+    <div className="min-h-screen flex">
+      <aside className="w-64 bg-gray-100 p-4 space-y-2 hidden sm:block">
+        <h2 className="font-semibold text-lg">Operator</h2>
+        <nav className="flex flex-col gap-2">
+          <Link to="/operator/dashboard">Dashboard</Link>
+          <Link to="/operator/entries">Entries</Link>
+          <Link to="/operator/vehicles">Vehicles</Link>
+        </nav>
+      </aside>
+      <main className="flex-1 p-6">
+        <Header />
+        <div className="sm:hidden mb-4">
+          <details className="border rounded">
+            <summary className="px-3 py-2 cursor-pointer">Menu</summary>
+            <nav className="flex flex-col gap-2 p-3">
+              <Link to="/operator/dashboard">Dashboard</Link>
+              <Link to="/operator/entries">Entries</Link>
+              <Link to="/operator/vehicles">Vehicles</Link>
+            </nav>
+          </details>
+        </div>
+        <Outlet />
+      </main>
+    </div>
+  );
+};
+
+export default OperatorLayout;

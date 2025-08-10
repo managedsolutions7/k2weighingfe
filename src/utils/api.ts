@@ -12,7 +12,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Example: attach auth token if it exists
-    const token = localStorage.getItem('auth_token');
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
     if (token && config.headers) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -33,8 +33,8 @@ api.interceptors.response.use(
       // Example: handle unauthorized errors
       if (error.response.status === 401) {
         // e.g., redirect to login, clear user data, show message, etc.
-        localStorage.clear(); // Clear local storage
-        window.location.href = '/login'; // Redirect to login page
+        if (typeof localStorage !== 'undefined') localStorage.clear();
+        if (typeof window !== 'undefined') window.location.href = '/login';
       }
       // You can also show a toast, log, etc.
     }
@@ -43,3 +43,19 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Helper to unwrap API wrapper { success, data, message }
+export const unwrap = async <T>(promise: Promise<import('axios').AxiosResponse>): Promise<T> => {
+  const res = await promise;
+  const cfg = res.config as { responseType?: string };
+  const payload = res.data as unknown as { success?: boolean; data?: unknown; message?: string };
+  if (cfg?.responseType === 'blob') {
+    return res.data as T; // passthrough for binary
+  }
+  if (payload && typeof payload === 'object' && 'success' in payload) {
+    if (payload.success) return (payload.data as T) ?? (undefined as unknown as T);
+    throw new Error(payload.message || 'Request failed');
+  }
+  // Fallback: return raw data if wrapper absent
+  return res.data as T;
+};

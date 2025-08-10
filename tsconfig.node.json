@@ -23,9 +23,10 @@
     // Absolute imports
     "baseUrl": ".",
     "paths": {
-      "src/*": ["src/*"]
+      "src/*": ["src/*"],
+      "@/*": ["src/*"]
     },
     "jsx": "react-jsx"
   },
-  "include": ["vite.config.ts", "src"]
+  "include": ["vite.config.ts"]
 }
