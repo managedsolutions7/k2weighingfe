@@ -22,7 +22,7 @@ function DataTable<T>({
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto border rounded">
-      <table className="min-w-full text-sm">
+      <table className="min-w-[700px] w-full text-sm">
         <thead className="bg-gray-50 text-left">
           <tr>
             {columns.map((col) => (

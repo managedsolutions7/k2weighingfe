@@ -8,10 +8,13 @@ import SupervisorDashboard from '@/pages/supervisor/Dashboard';
 import OperatorDashboard from '@/pages/operator/Dashboard';
 import SupervisorVendors from '@/pages/supervisor/Vendors';
 import SupervisorVehicles from '@/pages/supervisor/Vehicles';
+import SupervisorEntries from '@/pages/supervisor/Entries';
+import Profile from '@/pages/Profile';
 import PlantsPage from '@/pages/admin/Plants';
 import VendorsPage from '@/pages/admin/Vendors';
 import VehiclesPage from '@/pages/admin/Vehicles';
 import InvoicesPage from '@/pages/admin/Invoices';
+import MaterialsPage from '@/pages/admin/Materials';
 import ReportsPage from '@/pages/admin/Reports';
 import EntriesPage from '@/pages/operator/Entries';
 
@@ -21,9 +24,11 @@ const AppRoutes = () => (
       <Route element={<RoleRoute allowed={['admin']} />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/profile" element={<Profile />} />
           <Route path="/admin/plants" element={<PlantsPage />} />
           <Route path="/admin/vendors" element={<VendorsPage />} />
           <Route path="/admin/vehicles" element={<VehiclesPage />} />
+          <Route path="/admin/materials" element={<MaterialsPage />} />
           <Route path="/admin/invoices" element={<InvoicesPage />} />
           <Route path="/admin/reports" element={<ReportsPage />} />
         </Route>
@@ -32,6 +37,8 @@ const AppRoutes = () => (
       <Route element={<RoleRoute allowed={['supervisor']} />}>
         <Route element={<SupervisorLayout />}>
           <Route path="/supervisor/dashboard" element={<SupervisorDashboard />} />
+          <Route path="/supervisor/profile" element={<Profile />} />
+          <Route path="/supervisor/entries" element={<SupervisorEntries />} />
           <Route path="/supervisor/vendors" element={<SupervisorVendors />} />
           <Route path="/supervisor/vehicles" element={<SupervisorVehicles />} />
         </Route>
@@ -41,6 +48,7 @@ const AppRoutes = () => (
         <Route element={<OperatorLayout />}>
           <Route path="/operator/dashboard" element={<OperatorDashboard />} />
           <Route path="/operator/entries" element={<EntriesPage />} />
+          <Route path="/operator/profile" element={<Profile />} />
         </Route>
       </Route>
     </Route>

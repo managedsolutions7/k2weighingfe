@@ -35,30 +35,40 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <form onSubmit={onSubmit} className="bg-white shadow rounded p-6 space-y-4 w-full max-w-sm">
-        <h1 className="text-xl font-semibold">Login</h1>
-        <input
-          className="border rounded px-3 py-2 w-full"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          type="password"
-          className="border rounded px-3 py-2 w-full"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-blue-600 text-white rounded px-4 py-2 w-full disabled:opacity-60"
-        >
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+    <div className="min-h-screen flex items-center justify-center bg-[rgb(var(--bg-neutral))] p-4">
+      <div className="w-full max-w-md">
+        <div className="card p-6">
+          <h1 className="text-2xl font-semibold mb-1">Welcome back</h1>
+          <p className="text-sm text-gray-500 mb-4">Sign in to your account</p>
+          <form onSubmit={onSubmit} className="space-y-3">
+            <label className="block text-sm">
+              <span className="sr-only">Username</span>
+              <input
+                className="border rounded px-3 py-2 w-full"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="sr-only">Password</span>
+              <input
+                type="password"
+                className="border rounded px-3 py-2 w-full"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
+            <button type="submit" disabled={loading} className="btn btn-primary w-full">
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+        <p className="text-center mt-3 text-xs text-gray-500">Biofuel Management</p>
+      </div>
     </div>
   );
 };

@@ -8,3 +8,10 @@ export const minLen = (v: string, n: number, msg?: string) =>
 
 export const isEmail = (v: string, msg = 'Invalid email') =>
   v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? msg : '';
+
+export const isGST = (v: string, msg = 'Invalid GST number') => {
+  if (!v) return '';
+  const value = v.toUpperCase();
+  // Basic GSTIN format validation
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(value) ? '' : msg;
+};

@@ -48,6 +48,11 @@ export const login = async (payload: LoginRequest) => {
 };
 
 export const profile = async () => {
-  const res = await api.get<LoginResponse['user']>('/api/auth/profile');
-  return res.data;
+  return unwrap<LoginResponse['user']>(api.get('/api/auth/profile'));
+};
+
+export const changePassword = async (payload: { currentPassword: string; newPassword: string }) => {
+  return unwrap<{ success: boolean; message?: string }>(
+    api.post('/api/auth/change-password', payload),
+  );
 };

@@ -2,6 +2,7 @@ import api, { unwrap } from '@/utils/api';
 
 export interface Vehicle {
   _id: string;
+  vehicleCode?: string;
   vehicleNumber: string;
   vehicleType: 'buy' | 'sell';
   capacity?: number;
@@ -14,8 +15,11 @@ export interface Vehicle {
 export const createVehicle = async (data: Partial<Vehicle>) =>
   unwrap<Vehicle>(api.post('/api/vehicles', data));
 
-export const getVehicles = async (params?: { isActive?: boolean; vehicleType?: 'buy' | 'sell' }) =>
-  unwrap<Vehicle[]>(api.get('/api/vehicles', { params }));
+export const getVehicles = async (params?: {
+  isActive?: boolean;
+  vehicleType?: 'buy' | 'sell';
+  q?: string;
+}) => unwrap<Vehicle[]>(api.get('/api/vehicles', { params }));
 
 export const getVehicleById = async (id: string) => unwrap<Vehicle>(api.get(`/api/vehicles/${id}`));
 

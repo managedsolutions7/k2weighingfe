@@ -9,6 +9,16 @@ import {
 import Spinner from '@/components/common/Spinner';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import SearchBar from '@/components/common/SearchBar';
+import PageHeader from '@/components/ui/PageHeader';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Skeleton from '@/components/ui/Skeleton';
+import { Edit2, Trash2 } from 'lucide-react';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import Checkbox from '@/components/ui/Checkbox';
+import FormField from '@/components/ui/FormField';
 import Pagination from '@/components/common/Pagination';
 import { ConfirmDialog } from '@/components/common/Modal';
 import { toastError, toastSuccess } from '@/utils/toast';
@@ -37,17 +47,15 @@ const VehiclesPage = () => {
   const [confirm, setConfirm] = useState<{ open: boolean; id?: string }>({ open: false });
   const [, /* errors */ setErrors] = useState<FieldErrors<Partial<Vehicle>>>({});
   const { withScope } = useScopedParams();
+  const [saving, setSaving] = useState(false);
 
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const all = await getVehicles(withScope({}));
-      const filtered = query
-        ? all.filter((v) => v.vehicleNumber.toLowerCase().includes(query.toLowerCase()))
-        : all;
-      setTotal(filtered.length);
+      const list = await getVehicles(withScope({ q: query || undefined }));
+      setTotal(list.length);
       const start = (page - 1) * pageSize;
-      setVehicles(filtered.slice(start, start + pageSize));
+      setVehicles(list.slice(start, start + pageSize));
     } catch {
       toastError('Failed to fetch vehicles');
     } finally {
@@ -67,18 +75,26 @@ const VehiclesPage = () => {
       { key: 'capacity', header: 'Capacity' },
       { key: 'driverName', header: 'Driver' },
       { key: 'driverPhone', header: 'Phone' },
-      { key: 'isActive', header: 'Active', render: (r) => (r.isActive ? 'Yes' : 'No') },
+      {
+        key: 'isActive',
+        header: 'Active',
+        render: (r) => (
+          <Badge variant={r.isActive ? 'success' : 'danger'}>
+            {r.isActive ? 'Active' : 'Inactive'}
+          </Badge>
+        ),
+      },
       {
         key: 'actions',
         header: 'Actions',
         render: (r) => (
           <div className="flex gap-2">
-            <button className="px-2 py-1 border rounded" onClick={() => onEdit(r)}>
-              Edit
-            </button>
-            <button className="px-2 py-1 border rounded" onClick={() => onDelete(r._id)}>
-              Delete
-            </button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onEdit(r)}>
+              <Edit2 className="w-4 h-4" /> Edit
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onDelete(r._id)}>
+              <Trash2 className="w-4 h-4" /> Delete
+            </Button>
           </div>
         ),
       },
@@ -114,6 +130,7 @@ const VehiclesPage = () => {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     try {
+      setSaving(true);
       if (editingId) {
         await updateVehicle(editingId, form);
         toastSuccess('Vehicle updated');
@@ -126,6 +143,8 @@ const VehiclesPage = () => {
       void fetchVehicles();
     } catch {
       toastError('Failed to save vehicle');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -136,97 +155,116 @@ const VehiclesPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Vehicles</h1>
-        <SearchBar value={query} onChange={setQuery} placeholder="Search by vehicle number" />
-      </div>
+      <PageHeader
+        title="Vehicles"
+        actions={
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            placeholder="Search by vehicle no/code (VEH-*)"
+          />
+        }
+      />
       <div className="grid md:grid-cols-2 gap-6">
-        <div>
-          <DataTable<Vehicle> columns={columns} data={vehicles} keyField="_id" />
-          <Pagination page={page} total={total} pageSize={pageSize} onPageChange={setPage} />
-          {loading && <Spinner />}
-        </div>
-        <form onSubmit={onSubmit} className="bg-white border rounded p-4 space-y-3">
+        <Card>
+          {loading && vehicles.length === 0 ? (
+            <Skeleton className="h-48" />
+          ) : (
+            <>
+              <DataTable<Vehicle> columns={columns} data={vehicles} keyField="_id" />
+              <Pagination page={page} total={total} pageSize={pageSize} onPageChange={setPage} />
+            </>
+          )}
+          {loading && vehicles.length > 0 && <Spinner />}
+        </Card>
+        <form onSubmit={onSubmit} className="card p-4 space-y-3">
           <h2 className="font-medium">{editingId ? 'Edit Vehicle' : 'Create Vehicle'}</h2>
-          <input
-            className="border rounded px-3 py-2 w-full"
-            placeholder="Vehicle Number"
-            value={form.vehicleNumber ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, vehicleNumber: (e.target as HTMLInputElement).value }))
-            }
-            required
-          />
-          <select
-            className="border rounded px-3 py-2 w-full"
-            value={form.vehicleType ?? 'buy'}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                vehicleType: (e.target as HTMLSelectElement).value as 'buy' | 'sell',
-              }))
-            }
-          >
-            <option value="buy">Buy</option>
-            <option value="sell">Sell</option>
-          </select>
-          <input
-            type="number"
-            className="border rounded px-3 py-2 w-full"
-            placeholder="Capacity"
-            value={form.capacity ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                capacity: Number((e.target as HTMLInputElement).value) || undefined,
-              }))
-            }
-          />
-          <input
-            className="border rounded px-3 py-2 w-full"
-            placeholder="Driver Name"
-            value={form.driverName ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
-            }
-          />
-          <input
-            className="border rounded px-3 py-2 w-full"
-            placeholder="Driver Phone"
-            value={form.driverPhone ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
-            }
-          />
-          <input
-            type="number"
-            className="border rounded px-3 py-2 w-full"
-            placeholder="Tare Weight"
-            value={form.tareWeight ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                tareWeight: Number((e.target as HTMLInputElement).value) || undefined,
-              }))
-            }
-          />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.isActive ?? true}
+          <FormField label="Vehicle Number" required>
+            <Input
+              placeholder="Vehicle Number"
+              value={form.vehicleNumber ?? ''}
               onChange={(e) =>
-                setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                setForm((f) => ({ ...f, vehicleNumber: (e.target as HTMLInputElement).value }))
+              }
+              required
+            />
+          </FormField>
+          <FormField label="Type">
+            <Select
+              value={form.vehicleType ?? 'buy'}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  vehicleType: (e.target as HTMLSelectElement).value as 'buy' | 'sell',
+                }))
+              }
+            >
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+            </Select>
+          </FormField>
+          <FormField label="Capacity">
+            <Input
+              type="number"
+              placeholder="Capacity"
+              value={form.capacity ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  capacity: Number((e.target as HTMLInputElement).value) || undefined,
+                }))
               }
             />
-            Active
-          </label>
+          </FormField>
+          <FormField label="Driver Name">
+            <Input
+              placeholder="Driver Name"
+              value={form.driverName ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
+              }
+            />
+          </FormField>
+          <FormField label="Driver Phone">
+            <Input
+              placeholder="Driver Phone"
+              value={form.driverPhone ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
+              }
+            />
+          </FormField>
+          <FormField label="Tare Weight">
+            <Input
+              type="number"
+              placeholder="Tare Weight"
+              value={form.tareWeight ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  tareWeight: Number((e.target as HTMLInputElement).value) || undefined,
+                }))
+              }
+            />
+          </FormField>
+          <FormField label="Active">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={form.isActive ?? true}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                }
+              />
+              Active
+            </label>
+          </FormField>
           <div className="flex gap-2">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded" type="submit">
+            <Button type="submit" loading={saving} disabled={saving}>
               {editingId ? 'Update' : 'Create'}
-            </button>
-            <button className="px-4 py-2 border rounded" type="button" onClick={onResetForm}>
+            </Button>
+            <Button type="button" variant="outline" onClick={onResetForm}>
               Reset
-            </button>
+            </Button>
           </div>
         </form>
       </div>

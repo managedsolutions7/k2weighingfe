@@ -7,6 +7,7 @@ interface AsyncSelectProps {
   placeholder?: string;
   loadOptions: (q: string) => Promise<Option[]>;
   ariaLabel?: string;
+  disabled?: boolean;
 }
 
 const useDebounced = (value: string, delay = 300) => {
@@ -24,6 +25,7 @@ const AsyncSelect = ({
   placeholder = 'Search…',
   loadOptions,
   ariaLabel,
+  disabled = false,
 }: AsyncSelectProps) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -42,7 +44,7 @@ const AsyncSelect = ({
         setLoading(false);
       }
     };
-    if (open) void run();
+    if (open && !disabled) void run();
   }, [debounced, loadOptions, open]);
 
   useEffect(() => {
@@ -67,13 +69,17 @@ const AsyncSelect = ({
         role="combobox"
         aria-expanded={open}
         aria-label={ariaLabel}
+        aria-disabled={disabled}
         className="border rounded px-3 py-2 w-full"
         placeholder={placeholder}
         value={open ? query : selectedLabel}
         onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          if (!disabled) setOpen(true);
+        }}
+        disabled={disabled}
       />
-      {open && (
+      {open && !disabled && (
         <div className="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-56 overflow-auto">
           {loading && <div className="px-3 py-2 text-sm text-gray-500">Loading…</div>}
           {!loading && options.length === 0 && (

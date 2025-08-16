@@ -7,7 +7,7 @@ export const useScopedParams = () => {
   const user = useAppSelector((s) => s.auth.user);
 
   const withScope = <T extends Record<string, unknown>>(params?: T): T => {
-    if (user?.role === 'supervisor' && user.plantId) {
+    if ((user?.role === 'supervisor' || user?.role === 'operator') && user.plantId) {
       return {
         ...((params ?? {}) as Record<string, unknown>),
         plantId: user.plantId,

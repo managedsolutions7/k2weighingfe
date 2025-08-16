@@ -1,1 +1,60 @@
 @import 'tailwindcss';
+
+/* Design Tokens */
+:root {
+  --color-primary: 11 110 246; /* #0B6EF6 */
+  --color-accent: 245 158 11; /* #F59E0B */
+  --color-success: 16 185 129; /* #10B981 */
+  --color-danger: 239 68 68; /* #EF4444 */
+  --bg-neutral: 248 250 252; /* #F8FAFC */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --radius: 0.5rem;
+}
+
+body {
+  background-color: rgb(var(--bg-neutral));
+}
+
+/* Utilities */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+}
+.btn-primary {
+  background-color: rgb(var(--color-primary));
+  color: white;
+}
+.btn-primary:hover {
+  filter: brightness(0.95);
+}
+.btn-outline {
+  @apply border;
+  border-color: rgb(226 232 240);
+  background-color: white;
+}
+.card {
+  @apply bg-white border rounded;
+  border-color: rgb(226 232 240);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius);
+}
+
+/* Accessibility helpers */
+.skip-to-content {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.skip-to-content:focus {
+  left: 1rem;
+  top: 1rem;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid rgb(226 232 240);
+  border-radius: var(--radius);
+  z-index: 50;
+}

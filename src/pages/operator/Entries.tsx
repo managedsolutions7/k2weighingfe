@@ -8,24 +8,31 @@ import {
   updateEntryExit,
 } from '@/api/entries';
 import Spinner from '@/components/common/Spinner';
-import { ConfirmDialog } from '@/components/common/Modal';
+import { ConfirmDialog, Modal } from '@/components/common/Modal';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import SearchBar from '@/components/common/SearchBar';
 import Pagination from '@/components/common/Pagination';
+import PageHeader from '@/components/ui/PageHeader';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Skeleton from '@/components/ui/Skeleton';
+import { LogOut } from 'lucide-react';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import FormField from '@/components/ui/FormField';
 import { toastError, toastSuccess } from '@/utils/toast';
-import { usePlantsOptions, useVendorsOptions, useVehiclesOptions } from '@/hooks/useOptions';
+import { useVendorsOptions, useVehiclesOptions, useMaterialsOptions } from '@/hooks/useOptions';
 import AsyncSelect from '@/components/common/AsyncSelect';
 import type { Option } from '@/hooks/useOptions';
 import { useScopedParams } from '@/hooks/useScopedApi';
+import { useAppSelector } from '@/store';
 import { required, type FieldErrors } from '@/utils/validators';
 
 const emptyForm: Partial<Entry> = {
   entryType: 'sale',
   vendor: '',
   vehicle: '',
-  plant: '',
   entryWeight: undefined,
-  rate: undefined,
   isActive: true,
 };
 
@@ -39,11 +46,23 @@ const EntriesPage = () => {
   const [form, setForm] = useState<Partial<Entry>>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ open: boolean; id?: string }>({ open: false });
+  const [exitPrompt, setExitPrompt] = useState<{
+    open: boolean;
+    id?: string;
+    value: string; // exitWeight
+    entryType?: 'sale' | 'purchase';
+    palletteType?: '' | 'loose' | 'packed';
+    noOfBags?: string;
+    weightPerBag?: string;
+  }>({ open: false, value: '' });
+  const [saving, setSaving] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
   const [, /* errors */ setErrors] = useState<FieldErrors<Partial<Entry>>>({});
   const { withScope } = useScopedParams();
-  const { options: plantOptions } = usePlantsOptions();
+  const user = useAppSelector((s) => s.auth.user);
   const { options: vendorOptions } = useVendorsOptions({});
   const { options: vehicleOptions } = useVehiclesOptions();
+  const { options: materialOptions } = useMaterialsOptions();
 
   const loadVendorOptions = async (q: string): Promise<Option[]> => {
     const filtered = vendorOptions.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
@@ -53,21 +72,26 @@ const EntriesPage = () => {
     const filtered = vehicleOptions.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
     return Promise.resolve(filtered);
   };
-  const loadPlantOptions = async (q: string): Promise<Option[]> => {
-    const filtered = plantOptions.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
-    return Promise.resolve(filtered);
-  };
+  // Plant is not part of create payload/UI per new spec
 
   const fetchEntries = async () => {
     try {
       setLoading(true);
-      const all = await getEntries(withScope({}));
-      const filtered = query
-        ? all.filter((e) => e.entryType.toLowerCase().includes(query.toLowerCase()))
-        : all;
-      setTotal(filtered.length);
-      const start = (page - 1) * pageSize;
-      setEntries(filtered.slice(start, start + pageSize));
+      // For operators, default to last 24 hours
+      const params = withScope({ q: query || undefined, page, limit: pageSize }) as Record<
+        string,
+        unknown
+      >;
+      if (user?.role === 'operator') {
+        const to = new Date();
+        const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+        (params.from as string) = from.toISOString();
+        (params.to as string) = to.toISOString();
+      }
+      const res = await getEntries(params as any);
+      const list = res.entries ?? [];
+      setTotal(res.total ?? list.length);
+      setEntries(list);
     } catch {
       toastError('Failed to fetch entries');
     } finally {
@@ -78,16 +102,13 @@ const EntriesPage = () => {
   useEffect(() => {
     void fetchEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, page]);
+  }, [query, page, user?.role]);
+
+  // Plant is managed by backend via req.user.plantId
 
   // Handlers below are referenced in columns; ensure stable deps or list them
 
-  const onEdit = (entry: Entry) => {
-    setEditingId(entry._id);
-    setForm({ ...entry });
-  };
-
-  const onDelete = (id: string) => setConfirm({ open: true, id });
+  // Operator cannot edit/delete entries per permissions
   const onConfirmDelete = async () => {
     try {
       if (confirm.id) {
@@ -102,16 +123,53 @@ const EntriesPage = () => {
     }
   };
 
-  const onExit = async (id: string) => {
-    const value = prompt('Enter exit weight');
-    const weight = value ? Number(value) : undefined;
-    if (!weight) return;
+  const onExit = (entry: Entry) => {
+    setExitPrompt({
+      open: true,
+      id: entry._id,
+      value: '',
+      entryType: entry.entryType,
+      palletteType: '',
+      noOfBags: '',
+      weightPerBag: '',
+    });
+  };
+
+  const confirmExit = async () => {
+    const weight = Number(exitPrompt.value);
+    if (!exitPrompt.id || !Number.isFinite(weight) || weight <= 0) {
+      toastError('Please enter a valid exit weight');
+      return;
+    }
     try {
-      await updateEntryExit(id, weight);
+      setSaving(true);
+      let payload: any = { exitWeight: weight };
+      if (exitPrompt.entryType === 'sale') {
+        if (exitPrompt.palletteType === 'packed') {
+          const bags = Number(exitPrompt.noOfBags);
+          const wpb = Number(exitPrompt.weightPerBag);
+          if (!Number.isFinite(bags) || bags <= 0 || !Number.isFinite(wpb) || wpb <= 0) {
+            toastError('Bags and Weight/Bag must be > 0');
+            return;
+          }
+          payload = {
+            exitWeight: weight,
+            palletteType: 'packed',
+            noOfBags: bags,
+            weightPerBag: wpb,
+          };
+        } else if (exitPrompt.palletteType === 'loose') {
+          payload = { exitWeight: weight, palletteType: 'loose' };
+        }
+      }
+      await updateEntryExit(exitPrompt.id, payload as any);
       toastSuccess('Exit updated');
+      setExitPrompt({ open: false, value: '' });
       void fetchEntries();
     } catch {
       toastError('Failed to update exit');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -121,15 +179,37 @@ const EntriesPage = () => {
     if (required(form.entryType)) nextErrors.entryType = 'Type is required';
     if (required(form.vendor)) nextErrors.vendor = 'Vendor is required';
     if (required(form.vehicle)) nextErrors.vehicle = 'Vehicle is required';
-    if (required(form.plant)) nextErrors.plant = 'Plant is required';
+    // plant is not required/sent
+    if (!form.entryWeight || form.entryWeight <= 0)
+      nextErrors.entryWeight = 'Entry weight must be > 0';
+    // rate is removed from payload per new spec
+    // sale-specific pallette details are captured at exit, not at entry
+    if (form.entryType === 'purchase') {
+      if (required(form.materialType)) nextErrors.materialType = 'Material is required';
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     try {
+      setFormSaving(true);
+      const payload: Record<string, unknown> = {
+        entryType: form.entryType,
+        vendor: form.vendor,
+        vehicle: form.vehicle,
+        entryWeight: form.entryWeight,
+        entryDate: form.entryDate,
+        manualWeight: form.manualWeight,
+      };
+      // sale pallette details are handled during exit
+      if (form.entryType === 'purchase') {
+        payload.materialType =
+          typeof form.materialType === 'string' ? form.materialType : form.materialType?._id;
+      }
+
       if (editingId) {
-        await updateEntry(editingId, form);
+        await updateEntry(editingId, payload);
         toastSuccess('Entry updated');
       } else {
-        await createEntry(form);
+        await createEntry(payload);
         toastSuccess('Entry created');
       }
       setForm(emptyForm);
@@ -137,6 +217,8 @@ const EntriesPage = () => {
       void fetchEntries();
     } catch {
       toastError('Failed to save entry');
+    } finally {
+      setFormSaving(false);
     }
   };
 
@@ -147,26 +229,46 @@ const EntriesPage = () => {
 
   const columns: Column<Entry>[] = [
     { key: 'entryType', header: 'Type' },
-    { key: 'vendor', header: 'Vendor' },
-    { key: 'vehicle', header: 'Vehicle' },
-    { key: 'plant', header: 'Plant' },
+    {
+      key: 'vendor',
+      header: 'Vendor',
+      render: (r) => {
+        const value = (r as unknown as any).vendor;
+        if (!value) return '';
+        if (typeof value === 'object') return value.name ?? value._id ?? '';
+        return vendorOptions.find((o) => o.value === value)?.label ?? value;
+      },
+    },
+    {
+      key: 'vehicle',
+      header: 'Vehicle',
+      render: (r) => {
+        const value = (r as unknown as any).vehicle;
+        if (!value) return '';
+        if (typeof value === 'object') return value.vehicleNumber ?? value._id ?? '';
+        return vehicleOptions.find((o) => o.value === value)?.label ?? value;
+      },
+    },
+    { key: 'entryNumber', header: 'Entry No' },
+    { key: 'palletteType', header: 'Pallette' },
+    { key: 'noOfBags', header: 'Bags' },
+    { key: 'weightPerBag', header: 'Wt/Bag' },
+    { key: 'packedWeight', header: 'Packed Wt' },
+    {
+      key: 'materialType',
+      header: 'Material',
+      render: (r) => (typeof r.materialType === 'string' ? r.materialType : r.materialType?.name),
+    },
     { key: 'entryWeight', header: 'Entry Wt' },
     { key: 'exitWeight', header: 'Exit Wt' },
-    { key: 'rate', header: 'Rate' },
     {
       key: 'actions',
       header: 'Actions',
       render: (r) => (
         <div className="flex flex-wrap gap-2">
-          <button className="px-2 py-1 border rounded" onClick={() => onEdit(r)}>
-            Edit
-          </button>
-          <button className="px-2 py-1 border rounded" onClick={() => onDelete(r._id)}>
-            Delete
-          </button>
-          <button className="px-2 py-1 border rounded" onClick={() => onExit(r._id)}>
-            Exit
-          </button>
+          <Button type="button" variant="outline" size="sm" onClick={() => onExit(r)}>
+            <LogOut className="w-4 h-4" /> Exit
+          </Button>
         </div>
       ),
     },
@@ -175,93 +277,119 @@ const EntriesPage = () => {
   return (
     <>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">Entries</h1>
-          <SearchBar value={query} onChange={setQuery} placeholder="Search by type" />
-        </div>
+        <PageHeader
+          title="Entries"
+          actions={
+            <SearchBar value={query} onChange={setQuery} placeholder="Search by entry no (ENT-*)" />
+          }
+        />
         <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <DataTable<Entry> columns={columns} data={entries} keyField="_id" />
-            <Pagination page={page} total={total} pageSize={pageSize} onPageChange={setPage} />
-            {loading && <Spinner />}
-          </div>
-          <form onSubmit={onSubmit} className="bg-white border rounded p-4 space-y-3">
+          <Card>
+            {loading && entries.length === 0 ? (
+              <Skeleton className="h-48" />
+            ) : (
+              <>
+                <DataTable<Entry> columns={columns} data={entries} keyField="_id" />
+                <Pagination page={page} total={total} pageSize={pageSize} onPageChange={setPage} />
+              </>
+            )}
+            {loading && entries.length > 0 && <Spinner />}
+          </Card>
+          <form onSubmit={onSubmit} className="card p-4 space-y-3">
             <h2 className="font-medium">{editingId ? 'Edit Entry' : 'Create Entry'}</h2>
-            <select
-              className="border rounded px-3 py-2 w-full"
-              value={form.entryType ?? 'sale'}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  entryType: (e.target as HTMLSelectElement).value as 'sale' | 'purchase',
-                }))
+            <FormField label="Type">
+              <Select
+                value={form.entryType ?? 'sale'}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    entryType: (e.target as HTMLSelectElement).value as 'sale' | 'purchase',
+                  }))
+                }
+              >
+                <option value="sale">Sale</option>
+                <option value="purchase">Purchase</option>
+              </Select>
+            </FormField>
+            {/* Plant removed from create payload/UI */}
+            <FormField label="Vendor">
+              <AsyncSelect
+                value={typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id ?? '')}
+                onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
+                loadOptions={loadVendorOptions}
+                placeholder="Search vendor…"
+                ariaLabel="Vendor"
+              />
+            </FormField>
+            <FormField label="Vehicle">
+              <AsyncSelect
+                value={typeof form.vehicle === 'string' ? form.vehicle : (form.vehicle?._id ?? '')}
+                onChange={(v) => setForm((f) => ({ ...f, vehicle: v }))}
+                loadOptions={loadVehicleOptions}
+                placeholder="Search vehicle…"
+                ariaLabel="Vehicle"
+              />
+            </FormField>
+            <FormField
+              label={
+                form.entryType === 'sale' ? 'Unladen weight at entry' : 'Loaded weight at entry'
               }
+              htmlFor="entryWeight"
+              hint="In kilograms"
             >
-              <option value="sale">Sale</option>
-              <option value="purchase">Purchase</option>
-            </select>
-            <AsyncSelect
-              value={form.plant ?? ''}
-              onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
-              loadOptions={loadPlantOptions}
-              placeholder="Search plant…"
-              ariaLabel="Plant"
-            />
-            <AsyncSelect
-              value={form.vendor ?? ''}
-              onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
-              loadOptions={loadVendorOptions}
-              placeholder="Search vendor…"
-              ariaLabel="Vendor"
-            />
-            <AsyncSelect
-              value={form.vehicle ?? ''}
-              onChange={(v) => setForm((f) => ({ ...f, vehicle: v }))}
-              loadOptions={loadVehicleOptions}
-              placeholder="Search vehicle…"
-              ariaLabel="Vehicle"
-            />
-            <input
-              type="number"
-              className="border rounded px-3 py-2 w-full"
-              placeholder="Entry Weight"
-              value={form.entryWeight ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  entryWeight: Number((e.target as HTMLInputElement).value) || undefined,
-                }))
-              }
-            />
-            <input
-              type="number"
-              className="border rounded px-3 py-2 w-full"
-              placeholder="Rate"
-              value={form.rate ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  rate: Number((e.target as HTMLInputElement).value) || undefined,
-                }))
-              }
-            />
+              <Input
+                id="entryWeight"
+                type="number"
+                placeholder="Entry Weight"
+                value={form.entryWeight ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    entryWeight: Number((e.target as HTMLInputElement).value) || undefined,
+                  }))
+                }
+                describedById="entryWeight-hint"
+              />
+            </FormField>
+            {/* Sale pallette details will be captured during exit, not at entry */}
+            {form.entryType === 'purchase' && (
+              <FormField label="Material Type">
+                <Select
+                  value={
+                    typeof form.materialType === 'string'
+                      ? form.materialType
+                      : (form.materialType?._id ?? '')
+                  }
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, materialType: (e.target as HTMLSelectElement).value }))
+                  }
+                >
+                  <option value="">Select material…</option>
+                  {materialOptions.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={form.isActive ?? true}
+                checked={Boolean(form.manualWeight)}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  setForm((f) => ({ ...f, manualWeight: (e.target as HTMLInputElement).checked }))
                 }
               />
-              Active
+              Manual weight (hardware offline)
             </label>
             <div className="flex gap-2">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded" type="submit">
+              <Button type="submit" loading={formSaving} disabled={formSaving}>
                 {editingId ? 'Update' : 'Create'}
-              </button>
-              <button className="px-4 py-2 border rounded" type="button" onClick={onResetForm}>
+              </Button>
+              <Button type="button" variant="outline" onClick={onResetForm}>
                 Reset
-              </button>
+              </Button>
             </div>
           </form>
         </div>
@@ -273,6 +401,96 @@ const EntriesPage = () => {
         onCancel={() => setConfirm({ open: false })}
         onConfirm={onConfirmDelete}
       />
+      <Modal
+        open={exitPrompt.open}
+        onClose={() => setExitPrompt({ open: false, value: '' })}
+        title="Update Exit Weight"
+      >
+        <div className="space-y-3">
+          <FormField label="Exit Weight" htmlFor="exitWeight" hint="In kilograms">
+            <Input
+              id="exitWeight"
+              type="number"
+              value={exitPrompt.value}
+              onChange={(e) =>
+                setExitPrompt((s) => ({ ...s, value: (e.target as HTMLInputElement).value }))
+              }
+            />
+          </FormField>
+          {exitPrompt.entryType === 'sale' && (
+            <>
+              <FormField label="Pallette Type">
+                <Select
+                  value={exitPrompt.palletteType ?? ''}
+                  onChange={(e) =>
+                    setExitPrompt((s) => ({
+                      ...s,
+                      palletteType: (e.target as HTMLSelectElement).value as
+                        | 'loose'
+                        | 'packed'
+                        | '',
+                      noOfBags: '',
+                      weightPerBag: '',
+                    }))
+                  }
+                >
+                  <option value="">Not specified</option>
+                  <option value="loose">Loose</option>
+                  <option value="packed">Packed</option>
+                </Select>
+              </FormField>
+              {exitPrompt.palletteType === 'packed' && (
+                <>
+                  <FormField label="Number of Bags">
+                    <Input
+                      type="number"
+                      value={exitPrompt.noOfBags ?? ''}
+                      onChange={(e) =>
+                        setExitPrompt((s) => ({
+                          ...s,
+                          noOfBags: (e.target as HTMLInputElement).value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <FormField label="Weight per Bag">
+                    <Input
+                      type="number"
+                      value={exitPrompt.weightPerBag ?? ''}
+                      onChange={(e) =>
+                        setExitPrompt((s) => ({
+                          ...s,
+                          weightPerBag: (e.target as HTMLInputElement).value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <FormField label="Packed Weight">
+                    <Input
+                      readOnly
+                      value={String(
+                        (Number(exitPrompt.noOfBags) || 0) * (Number(exitPrompt.weightPerBag) || 0),
+                      )}
+                    />
+                  </FormField>
+                </>
+              )}
+            </>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setExitPrompt({ open: false, value: '' })}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmExit} loading={saving} disabled={saving}>
+              Update
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };

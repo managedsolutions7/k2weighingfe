@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import FiltersBar from '@/components/common/FiltersBar';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import FormField from '@/components/ui/FormField';
+import PageHeader from '@/components/ui/PageHeader';
+import Button from '@/components/ui/Button';
 import {
   exportCsv,
   getDetailedReport,
@@ -17,6 +22,7 @@ const ReportsPage = () => {
   const [endDate, setEndDate] = useState('');
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month' | ''>('');
   const [result, setResult] = useState<unknown>(null);
+  const [loading, setLoading] = useState(false);
 
   const onReset = () => {
     setEntryType('');
@@ -39,42 +45,55 @@ const ReportsPage = () => {
 
   const runSummary = async () => {
     try {
+      setLoading(true);
       const data = await getReportSummary(params);
       setResult(data);
     } catch {
       toastError('Failed to get summary');
+    } finally {
+      setLoading(false);
     }
   };
 
   const runDetailed = async () => {
     try {
+      setLoading(true);
       const data = await getDetailedReport(params);
       setResult(data);
     } catch {
       toastError('Failed to get detailed report');
+    } finally {
+      setLoading(false);
     }
   };
 
   const runVendorWise = async () => {
     try {
+      setLoading(true);
       const data = await getVendorWiseReport({ ...params, vendors: vendor });
       setResult(data);
     } catch {
       toastError('Failed to get vendor-wise report');
+    } finally {
+      setLoading(false);
     }
   };
 
   const runPlantWise = async () => {
     try {
+      setLoading(true);
       const data = await getPlantWiseReport({ ...params, plant });
       setResult(data);
     } catch {
       toastError('Failed to get plant-wise report');
+    } finally {
+      setLoading(false);
     }
   };
 
   const onExport = async () => {
     try {
+      setLoading(true);
       const blob = await exportCsv({ ...params, groupBy: groupBy || 'vendor' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -85,78 +104,86 @@ const ReportsPage = () => {
       toastSuccess('Export started');
     } catch {
       toastError('Failed to export CSV');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Reports</h1>
+      <PageHeader title="Reports" />
       <FiltersBar onReset={onReset}>
-        <select
-          className="border rounded px-3 py-2"
-          value={entryType}
-          onChange={(e) =>
-            setEntryType((e.target as HTMLSelectElement).value as 'sale' | 'purchase' | '')
-          }
-        >
-          <option value="">All Types</option>
-          <option value="sale">Sale</option>
-          <option value="purchase">Purchase</option>
-        </select>
-        <input
-          className="border rounded px-3 py-2"
-          placeholder="Vendor ID"
-          value={vendor}
-          onChange={(e) => setVendor((e.target as HTMLInputElement).value)}
-        />
-        <input
-          className="border rounded px-3 py-2"
-          placeholder="Plant ID"
-          value={plant}
-          onChange={(e) => setPlant((e.target as HTMLInputElement).value)}
-        />
-        <input
-          type="date"
-          className="border rounded px-3 py-2"
-          value={startDate}
-          onChange={(e) => setStartDate((e.target as HTMLInputElement).value)}
-        />
-        <input
-          type="date"
-          className="border rounded px-3 py-2"
-          value={endDate}
-          onChange={(e) => setEndDate((e.target as HTMLInputElement).value)}
-        />
-        <select
-          className="border rounded px-3 py-2"
-          value={groupBy}
-          onChange={(e) =>
-            setGroupBy((e.target as HTMLSelectElement).value as 'day' | 'week' | 'month' | '')
-          }
-        >
-          <option value="">No Grouping</option>
-          <option value="day">Day</option>
-          <option value="week">Week</option>
-          <option value="month">Month</option>
-        </select>
+        <FormField label="Type">
+          <Select
+            value={entryType}
+            onChange={(e) =>
+              setEntryType((e.target as HTMLSelectElement).value as 'sale' | 'purchase' | '')
+            }
+          >
+            <option value="">All Types</option>
+            <option value="sale">Sale</option>
+            <option value="purchase">Purchase</option>
+          </Select>
+        </FormField>
+        <FormField label="Vendor ID" hint="Leave blank for all vendors">
+          <Input
+            placeholder="Vendor ID"
+            value={vendor}
+            onChange={(e) => setVendor((e.target as HTMLInputElement).value)}
+          />
+        </FormField>
+        <FormField label="Plant ID" hint="Leave blank for all plants">
+          <Input
+            placeholder="Plant ID"
+            value={plant}
+            onChange={(e) => setPlant((e.target as HTMLInputElement).value)}
+          />
+        </FormField>
+        <FormField label="Start Date">
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate((e.target as HTMLInputElement).value)}
+          />
+        </FormField>
+        <FormField label="End Date">
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate((e.target as HTMLInputElement).value)}
+          />
+        </FormField>
+        <FormField label="Group By">
+          <Select
+            value={groupBy}
+            onChange={(e) =>
+              setGroupBy((e.target as HTMLSelectElement).value as 'day' | 'week' | 'month' | '')
+            }
+          >
+            <option value="">No Grouping</option>
+            <option value="day">Day</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+          </Select>
+        </FormField>
       </FiltersBar>
 
       <div className="flex flex-wrap gap-2">
-        <button className="px-3 py-2 border rounded" onClick={runSummary}>
+        <Button variant="outline" onClick={runSummary} loading={loading} disabled={loading}>
           Summary
-        </button>
-        <button className="px-3 py-2 border rounded" onClick={runDetailed}>
+        </Button>
+        <Button variant="outline" onClick={runDetailed} loading={loading} disabled={loading}>
           Detailed
-        </button>
-        <button className="px-3 py-2 border rounded" onClick={runVendorWise}>
+        </Button>
+        <Button variant="outline" onClick={runVendorWise} loading={loading} disabled={loading}>
           Vendor-wise
-        </button>
-        <button className="px-3 py-2 border rounded" onClick={runPlantWise}>
+        </Button>
+        <Button variant="outline" onClick={runPlantWise} loading={loading} disabled={loading}>
           Plant-wise
-        </button>
-        <button className="ml-auto px-3 py-2 bg-blue-600 text-white rounded" onClick={onExport}>
+        </Button>
+        <Button className="ml-auto" onClick={onExport} loading={loading} disabled={loading}>
           Export CSV
-        </button>
+        </Button>
       </div>
 
       <pre className="bg-gray-50 border rounded p-3 text-xs overflow-auto max-h-[50vh]">
