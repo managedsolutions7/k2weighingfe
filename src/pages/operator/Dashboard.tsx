@@ -1,50 +1,87 @@
 import { useEffect, useState } from 'react';
-import { useAppSelector } from '@/store';
+// import { useAppSelector } from '@/store';
 import { getOperatorDashboard, type DateRangeParams } from '@/api/dashboard';
 import PageHeader from '@/components/ui/PageHeader';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { formatDateTime, getPresetRange, type PresetRange } from '@/utils/date';
 
 const OperatorDashboard = () => {
-  const user = useAppSelector((s) => s.auth.user);
+  // Removed unused selector to satisfy linter
+  const [preset, setPreset] = useState<PresetRange>('24h');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [data, setData] = useState<any>(null);
+  interface OperatorDashboardData {
+    totals?: { totalEntries?: number; totalQuantity?: number };
+    counters?: { pendingReviews?: number; flagged?: number };
+    recentEntries?: Array<{
+      _id: string;
+      entryType?: string;
+      vendor?: string | { name?: string };
+      vehicle?: { vehicleNumber?: string };
+      plant?: string | { code?: string };
+      entryDate?: string;
+      entryWeight?: number;
+    }>;
+  }
+  const [data, setData] = useState<OperatorDashboardData | null>(null);
 
   useEffect(() => {
     const load = async () => {
-      const params: DateRangeParams = {
-        ...(startDate ? { startDate } : {}),
-        ...(endDate ? { endDate } : {}),
-        recentEntriesLimit: 5,
-      };
+      // Map presets to start/end ISO dates; custom uses explicit dates
+      let params: DateRangeParams = { recentEntriesLimit: 5 };
+      if (preset === 'custom') {
+        params = {
+          ...params,
+          ...(startDate ? { startDate } : {}),
+          ...(endDate ? { endDate } : {}),
+        };
+      } else {
+        const { from, to } = getPresetRange(preset);
+        params = { ...params, startDate: from, endDate: to };
+      }
       const resp = await getOperatorDashboard(params);
       setData(resp ?? {});
     };
     void load();
-  }, [startDate, endDate]);
+  }, [preset, startDate, endDate]);
 
   return (
     <section className="space-y-6">
       <PageHeader
         title="Operator Dashboard"
         actions={
-          <div className="flex gap-2">
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate((e.target as HTMLInputElement).value)}
-            />
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate((e.target as HTMLInputElement).value)}
-            />
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              className="border rounded px-3 py-2"
+              value={preset}
+              onChange={(e) => setPreset((e.target as HTMLSelectElement).value as PresetRange)}
+            >
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {preset === 'custom' && (
+              <>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate((e.target as HTMLInputElement).value)}
+                />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate((e.target as HTMLInputElement).value)}
+                />
+              </>
+            )}
             <Button
               variant="outline"
               onClick={() => {
+                setPreset('24h');
                 setStartDate('');
                 setEndDate('');
               }}
@@ -64,10 +101,7 @@ const OperatorDashboard = () => {
           <div className="text-sm text-gray-500">Quantity</div>
           <div className="text-2xl font-semibold">{data?.totals?.totalQuantity ?? 0}</div>
         </div>
-        <div className="card p-4">
-          <div className="text-sm text-gray-500">Amount</div>
-          <div className="text-2xl font-semibold">{data?.totals?.totalAmount ?? 0}</div>
-        </div>
+        {/* Removed Amount card as per new requirement */}
       </div>
 
       <Card>
@@ -81,7 +115,7 @@ const OperatorDashboard = () => {
       <Card>
         <h3 className="font-medium mb-2">Recent Entries</h3>
         <div className="space-y-2 text-sm">
-          {(data?.recentEntries ?? []).map((e: any) => (
+          {(data?.recentEntries ?? []).map((e) => (
             <div key={e._id} className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{e.entryType}</div>
@@ -91,7 +125,7 @@ const OperatorDashboard = () => {
                   {typeof e.plant === 'string' ? e.plant : e.plant?.code}
                 </div>
               </div>
-              <div className="text-right text-xs">{e.entryDate}</div>
+              <div className="text-right text-xs">{formatDateTime(e.entryDate)}</div>
             </div>
           ))}
         </div>
@@ -102,7 +136,7 @@ const OperatorDashboard = () => {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
-              data={(data?.recentEntries ?? []).map((e: any) => ({
+              data={(data?.recentEntries ?? []).map((e) => ({
                 name: e.entryDate?.slice(5, 10) ?? '',
                 qty: e.entryWeight ?? 0,
               }))}

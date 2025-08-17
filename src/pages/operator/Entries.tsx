@@ -27,6 +27,7 @@ import type { Option } from '@/hooks/useOptions';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import { useAppSelector } from '@/store';
 import { required, type FieldErrors } from '@/utils/validators';
+//
 
 const emptyForm: Partial<Entry> = {
   entryType: 'sale',
@@ -39,6 +40,7 @@ const emptyForm: Partial<Entry> = {
 const EntriesPage = () => {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [query, setQuery] = useState('');
+  const [pendingQuery, setPendingQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -54,10 +56,12 @@ const EntriesPage = () => {
     palletteType?: '' | 'loose' | 'packed';
     noOfBags?: string;
     weightPerBag?: string;
+    moisture?: string;
+    dust?: string;
   }>({ open: false, value: '' });
   const [saving, setSaving] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
-  const [, /* errors */ setErrors] = useState<FieldErrors<Partial<Entry>>>({});
+  const [errors, setErrors] = useState<FieldErrors<Partial<Entry>>>({});
   const { withScope } = useScopedParams();
   const user = useAppSelector((s) => s.auth.user);
   const { options: vendorOptions } = useVendorsOptions({});
@@ -77,18 +81,16 @@ const EntriesPage = () => {
   const fetchEntries = async () => {
     try {
       setLoading(true);
-      // For operators, default to last 24 hours
       const params = withScope({ q: query || undefined, page, limit: pageSize }) as Record<
         string,
         unknown
       >;
-      if (user?.role === 'operator') {
-        const to = new Date();
-        const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
-        (params.from as string) = from.toISOString();
-        (params.to as string) = to.toISOString();
-      }
-      const res = await getEntries(params as any);
+      // For operator, default to last 24 hours
+      const to = new Date();
+      const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+      (params.from as string) = from.toISOString();
+      (params.to as string) = to.toISOString();
+      const res = await getEntries(params as never);
       const list = res.entries ?? [];
       setTotal(res.total ?? list.length);
       setEntries(list);
@@ -124,6 +126,10 @@ const EntriesPage = () => {
   };
 
   const onExit = (entry: Entry) => {
+    if (entry.exitWeight && entry.exitWeight > 0) {
+      toastError('Exit weight already recorded and cannot be updated again');
+      return;
+    }
     setExitPrompt({
       open: true,
       id: entry._id,
@@ -132,6 +138,8 @@ const EntriesPage = () => {
       palletteType: '',
       noOfBags: '',
       weightPerBag: '',
+      moisture: '',
+      dust: '',
     });
   };
 
@@ -141,9 +149,45 @@ const EntriesPage = () => {
       toastError('Please enter a valid exit weight');
       return;
     }
+    // Additional validations per flow
+    const current = entries.find((e) => e._id === exitPrompt.id);
+    const entryWeight = current?.entryWeight ?? undefined;
+    if (exitPrompt.entryType === 'sale' && typeof entryWeight === 'number' && entryWeight > 0) {
+      if (weight < entryWeight) {
+        toastError(
+          'Invalid weights: for sale, exitWeight must be greater than or equal to entryWeight',
+        );
+        return;
+      }
+    }
+    if (
+      exitPrompt.entryType === 'purchase' &&
+      typeof entryWeight === 'number' &&
+      entryWeight > 0 &&
+      entryWeight < weight
+    ) {
+      toastError(
+        'Invalid weights: for purchase, entryWeight must be greater than or equal to exitWeight',
+      );
+      return;
+    }
+    const moisture = exitPrompt.moisture !== '' ? Number(exitPrompt.moisture) : undefined;
+    const dust = exitPrompt.dust !== '' ? Number(exitPrompt.dust) : undefined;
+    if (typeof moisture === 'number') {
+      if (!Number.isFinite(moisture) || moisture < 0 || moisture > 100) {
+        toastError('Moisture must be between 0 and 100');
+        return;
+      }
+    }
+    if (typeof dust === 'number') {
+      if (!Number.isFinite(dust) || dust < 0 || dust > 100) {
+        toastError('Dust must be between 0 and 100');
+        return;
+      }
+    }
     try {
       setSaving(true);
-      let payload: any = { exitWeight: weight };
+      const payload: Record<string, unknown> = { exitWeight: weight };
       if (exitPrompt.entryType === 'sale') {
         if (exitPrompt.palletteType === 'packed') {
           const bags = Number(exitPrompt.noOfBags);
@@ -152,24 +196,48 @@ const EntriesPage = () => {
             toastError('Bags and Weight/Bag must be > 0');
             return;
           }
-          payload = {
-            exitWeight: weight,
-            palletteType: 'packed',
-            noOfBags: bags,
-            weightPerBag: wpb,
-          };
+          payload.palletteType = 'packed';
+          payload.noOfBags = bags;
+          payload.weightPerBag = wpb;
         } else if (exitPrompt.palletteType === 'loose') {
-          payload = { exitWeight: weight, palletteType: 'loose' };
+          payload.palletteType = 'loose';
         }
+      } else if (exitPrompt.entryType === 'purchase') {
+        // Include optional moisture/dust for purchase exits
+        if (typeof moisture === 'number') (payload as { moisture?: number }).moisture = moisture;
+        if (typeof dust === 'number') (payload as { dust?: number }).dust = dust;
       }
-      await updateEntryExit(exitPrompt.id, payload as any);
+      await updateEntryExit(exitPrompt.id, payload as never);
       toastSuccess('Exit updated');
       setExitPrompt({ open: false, value: '' });
       void fetchEntries();
-    } catch {
-      toastError('Failed to update exit');
+    } catch (err) {
+      // show backend error as-is if message available
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? (err as Error).message
+          : 'Failed to update exit';
+      toastError(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onDownloadReceipt = async (entry: Entry) => {
+    try {
+      // Lazy import to avoid circular imports at top if needed
+      const { downloadEntryReceipt } = await import('@/api/entries');
+      const blob = await downloadEntryReceipt(entry._id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${entry.entryNumber ?? entry._id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toastError('Failed to download receipt');
     }
   };
 
@@ -179,6 +247,8 @@ const EntriesPage = () => {
     if (required(form.entryType)) nextErrors.entryType = 'Type is required';
     if (required(form.vendor)) nextErrors.vendor = 'Vendor is required';
     if (required(form.vehicle)) nextErrors.vehicle = 'Vehicle is required';
+    if (!form.driverName || String(form.driverName).trim().length === 0)
+      nextErrors.driverName = "Driver's name is required";
     // plant is not required/sent
     if (!form.entryWeight || form.entryWeight <= 0)
       nextErrors.entryWeight = 'Entry weight must be > 0';
@@ -195,6 +265,8 @@ const EntriesPage = () => {
         entryType: form.entryType,
         vendor: form.vendor,
         vehicle: form.vehicle,
+        driverName: form.driverName,
+        driverPhone: form.driverPhone,
         entryWeight: form.entryWeight,
         entryDate: form.entryDate,
         manualWeight: form.manualWeight,
@@ -233,7 +305,7 @@ const EntriesPage = () => {
       key: 'vendor',
       header: 'Vendor',
       render: (r) => {
-        const value = (r as unknown as any).vendor;
+        const value = r.vendor as Entry['vendor'];
         if (!value) return '';
         if (typeof value === 'object') return value.name ?? value._id ?? '';
         return vendorOptions.find((o) => o.value === value)?.label ?? value;
@@ -243,13 +315,15 @@ const EntriesPage = () => {
       key: 'vehicle',
       header: 'Vehicle',
       render: (r) => {
-        const value = (r as unknown as any).vehicle;
+        const value = r.vehicle as Entry['vehicle'];
         if (!value) return '';
         if (typeof value === 'object') return value.vehicleNumber ?? value._id ?? '';
         return vehicleOptions.find((o) => o.value === value)?.label ?? value;
       },
     },
     { key: 'entryNumber', header: 'Entry No' },
+    { key: 'driverName', header: "Driver's Name" },
+    { key: 'driverPhone', header: "Driver's Phone" },
     { key: 'palletteType', header: 'Pallette' },
     { key: 'noOfBags', header: 'Bags' },
     { key: 'weightPerBag', header: 'Wt/Bag' },
@@ -262,15 +336,51 @@ const EntriesPage = () => {
     { key: 'entryWeight', header: 'Entry Wt' },
     { key: 'exitWeight', header: 'Exit Wt' },
     {
+      key: 'varianceFlag',
+      header: 'Variance Test',
+      render: (r) => (
+        <span
+          className={`px-2 py-0.5 text-xs rounded ${r.varianceFlag ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}
+        >
+          {r.varianceFlag ? 'Fail' : 'Pass'}
+        </span>
+      ),
+    },
+    {
       key: 'actions',
       header: 'Actions',
-      render: (r) => (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onExit(r)}>
-            <LogOut className="w-4 h-4" /> Exit
-          </Button>
-        </div>
-      ),
+      render: (r) => {
+        const disabled = Boolean(r.exitWeight && r.exitWeight > 0);
+        return (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onExit(r)}
+              disabled={disabled}
+            >
+              <LogOut className="w-4 h-4" /> {disabled ? 'Recorded' : 'Exit'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={Boolean(r.varianceFlag) || !(r.exitWeight && r.exitWeight > 0)}
+              onClick={() => onDownloadReceipt(r)}
+              title={
+                r.varianceFlag
+                  ? 'Variance failed'
+                  : !(r.exitWeight && r.exitWeight > 0)
+                    ? 'Exit not recorded'
+                    : 'Download receipt'
+              }
+            >
+              PDF
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -280,7 +390,34 @@ const EntriesPage = () => {
         <PageHeader
           title="Entries"
           actions={
-            <SearchBar value={query} onChange={setQuery} placeholder="Search by entry no (ENT-*)" />
+            <div className="flex flex-wrap gap-2 items-center">
+              <SearchBar
+                value={pendingQuery}
+                onChange={setPendingQuery}
+                placeholder="Search by entry no (ENT-*)"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setQuery(pendingQuery);
+                  setPage(1);
+                }}
+              >
+                Search
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPendingQuery('');
+                  setQuery('');
+                  setPage(1);
+                }}
+              >
+                Reset
+              </Button>
+            </div>
           }
         />
         <div className="grid md:grid-cols-2 gap-6">
@@ -328,6 +465,31 @@ const EntriesPage = () => {
                 loadOptions={loadVehicleOptions}
                 placeholder="Search vehicle…"
                 ariaLabel="Vehicle"
+              />
+            </FormField>
+            <FormField
+              label="Driver's Name"
+              htmlFor="driverName"
+              error={errors.driverName as string | undefined}
+            >
+              <Input
+                id="driverName"
+                placeholder="Driver's name"
+                value={form.driverName ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
+                }
+                invalid={Boolean(errors.driverName)}
+              />
+            </FormField>
+            <FormField label="Driver's Phone" htmlFor="driverPhone">
+              <Input
+                id="driverPhone"
+                placeholder="Driver's phone (optional)"
+                value={form.driverPhone ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
+                }
               />
             </FormField>
             <FormField
@@ -417,6 +579,39 @@ const EntriesPage = () => {
               }
             />
           </FormField>
+          {exitPrompt.entryType === 'purchase' && (
+            <>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <FormField label="Moisture (%)">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={exitPrompt.moisture ?? ''}
+                    onChange={(e) =>
+                      setExitPrompt((s) => ({
+                        ...s,
+                        moisture: (e.target as HTMLInputElement).value,
+                      }))
+                    }
+                  />
+                </FormField>
+                <FormField label="Dust (%)">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={exitPrompt.dust ?? ''}
+                    onChange={(e) =>
+                      setExitPrompt((s) => ({ ...s, dust: (e.target as HTMLInputElement).value }))
+                    }
+                  />
+                </FormField>
+              </div>
+            </>
+          )}
           {exitPrompt.entryType === 'sale' && (
             <>
               <FormField label="Pallette Type">

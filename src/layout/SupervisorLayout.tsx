@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import Header from '@/components/common/Header';
-import { Building2, LayoutDashboard, Truck, User, ListChecks } from 'lucide-react';
+import { LayoutDashboard, User, ListChecks } from 'lucide-react';
 import { useState } from 'react';
 
 const SupervisorLayout = () => {
@@ -10,8 +10,6 @@ const SupervisorLayout = () => {
   const links = [
     { to: '/supervisor/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/supervisor/entries', label: 'Entries', icon: ListChecks },
-    { to: '/supervisor/vendors', label: 'Vendors', icon: Building2 },
-    { to: '/supervisor/vehicles', label: 'Vehicles', icon: Truck },
     { to: '/supervisor/profile', label: 'Profile', icon: User },
   ];
 

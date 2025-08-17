@@ -9,6 +9,8 @@ export interface Entry {
   plant?: string | { _id: string; name?: string };
   entryWeight?: number;
   exitWeight?: number;
+  driverName?: string;
+  driverPhone?: string;
   rate?: number;
   quantity?: number;
   entryDate?: string;
@@ -20,6 +22,19 @@ export interface Entry {
   weightPerBag?: number; // when palletteType = 'packed'
   packedWeight?: number; // derived client-side; backend may also compute
   materialType?: string | { _id: string; name: string }; // purchase only
+  varianceFlag?: boolean; // false => pass, true => fail
+  flagged?: boolean;
+  flagReason?: string;
+  expectedWeight?: number;
+  exactWeight?: number;
+  createdBy?: { _id: string; username?: string; name?: string } | string;
+  updatedBy?: { _id: string; username?: string; name?: string } | string;
+  // Purchase exit derived fields (read-only)
+  moisture?: number;
+  dust?: number;
+  moistureWeight?: number;
+  dustWeight?: number;
+  finalWeight?: number;
   // Review fields (optional, backend may provide)
   isReviewed?: boolean;
   reviewedBy?: string;
@@ -58,8 +73,21 @@ export const reviewEntry = async (
 ) => unwrap<Entry>(api.patch(`/api/entries/${id}/review`, payload));
 
 export type ExitUpdatePayload =
-  | { exitWeight: number; palletteType?: 'loose' }
-  | { exitWeight: number; palletteType: 'packed'; noOfBags: number; weightPerBag: number };
+  | { exitWeight: number; palletteType?: 'loose'; moisture?: number; dust?: number }
+  | {
+      exitWeight: number;
+      palletteType: 'packed';
+      noOfBags: number;
+      weightPerBag: number;
+      moisture?: number;
+      dust?: number;
+    };
 
 export const updateEntryExit = async (id: string, payload: ExitUpdatePayload) =>
   unwrap<Entry>(api.patch(`/api/entries/${id}/exit`, payload));
+
+export const downloadEntryReceipt = async (id: string) =>
+  unwrap<Blob>(api.get(`/api/entries/${id}/receipt`, { responseType: 'blob' }));
+
+export const flagEntry = async (id: string, payload: { flagged: boolean; flagReason?: string }) =>
+  unwrap<Entry>(api.patch(`/api/entries/${id}/flag`, payload));

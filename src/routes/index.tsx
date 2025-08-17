@@ -6,8 +6,7 @@ import OperatorLayout from '@/layout/OperatorLayout';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import SupervisorDashboard from '@/pages/supervisor/Dashboard';
 import OperatorDashboard from '@/pages/operator/Dashboard';
-import SupervisorVendors from '@/pages/supervisor/Vendors';
-import SupervisorVehicles from '@/pages/supervisor/Vehicles';
+// Supervisor no access to Vendors/Vehicles
 import SupervisorEntries from '@/pages/supervisor/Entries';
 import Profile from '@/pages/Profile';
 import PlantsPage from '@/pages/admin/Plants';
@@ -39,8 +38,7 @@ const AppRoutes = () => (
           <Route path="/supervisor/dashboard" element={<SupervisorDashboard />} />
           <Route path="/supervisor/profile" element={<Profile />} />
           <Route path="/supervisor/entries" element={<SupervisorEntries />} />
-          <Route path="/supervisor/vendors" element={<SupervisorVendors />} />
-          <Route path="/supervisor/vehicles" element={<SupervisorVehicles />} />
+          {/** Supervisor no longer has access to vendors/vehicles pages */}
         </Route>
       </Route>
 

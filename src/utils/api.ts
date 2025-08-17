@@ -16,6 +16,7 @@ api.interceptors.request.use(
     if (token && config.headers) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    // Allow server-driven caching; do not force no-cache from frontend
     return config;
   },
   (error: AxiosError) => {

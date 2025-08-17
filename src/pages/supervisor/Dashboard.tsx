@@ -13,25 +13,36 @@ import {
   Legend,
 } from 'recharts';
 import { getEntries, reviewEntry, type Entry } from '@/api/entries';
-import { getVendors } from '@/api/vendors';
-import { getVehicles } from '@/api/vehicles';
 import { useAppSelector } from '@/store';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
+import { formatDateTime } from '@/utils/date';
+import Skeleton from '@/components/ui/Skeleton';
 
 const SupervisorDashboard = () => {
   const user = useAppSelector((s) => s.auth.user);
-  const [kpis, setKpis] = useState<{ totalEntries: number; vendors: number; vehicles: number }>({
-    totalEntries: 0,
-    vendors: 0,
-    vehicles: 0,
-  });
+  // KPIs not used currently
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [data, setData] = useState<any>(null);
+  interface SupervisorDashboardData {
+    totals?: { totalEntries?: number; totalQuantity?: number };
+    byType?: {
+      purchase?: { entries?: number; quantity?: number };
+      sale?: { entries?: number; quantity?: number };
+    };
+    recentEntries?: Array<{
+      _id: string;
+      entryNumber?: string;
+      entryType?: string;
+      vendor?: string | { name?: string };
+      vehicle?: { vehicleNumber?: string } | string;
+      entryDate?: string;
+    }>;
+  }
+  const [data, setData] = useState<SupervisorDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -81,51 +92,92 @@ const SupervisorDashboard = () => {
         }
       />
       <div className="grid sm:grid-cols-3 gap-4">
-        <div className="card p-4">
-          <div className="text-sm text-gray-500">Total Entries</div>
-          <div className="text-2xl font-semibold">{data?.totals?.totalEntries ?? 0}</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-sm text-gray-500">Quantity</div>
-          <div className="text-2xl font-semibold">{data?.totals?.totalQuantity ?? 0}</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-sm text-gray-500">Amount</div>
-          <div className="text-2xl font-semibold">{data?.totals?.totalAmount ?? 0}</div>
-        </div>
+        {loading ? (
+          <>
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+            <div />
+          </>
+        ) : (
+          <>
+            <div className="card p-4">
+              <div className="text-sm text-gray-500">Total Entries</div>
+              <div className="text-2xl font-semibold">{data?.totals?.totalEntries ?? 0}</div>
+            </div>
+            <div className="card p-4">
+              <div className="text-sm text-gray-500">Quantity</div>
+              <div className="text-2xl font-semibold">{data?.totals?.totalQuantity ?? 0}</div>
+            </div>
+            {/* Amount removed as per new requirement */}
+          </>
+        )}
       </div>
 
       <Card>
         <h2 className="font-medium mb-3">By Type</h2>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={[
+          {loading ? (
+            <Skeleton className="h-64" />
+          ) : (
+            (() => {
+              const chartData = [
                 {
                   name: 'Purchase',
                   entries: data?.byType?.purchase?.entries ?? 0,
                   quantity: data?.byType?.purchase?.quantity ?? 0,
-                  amount: data?.byType?.purchase?.amount ?? 0,
                 },
                 {
                   name: 'Sale',
                   entries: data?.byType?.sale?.entries ?? 0,
                   quantity: data?.byType?.sale?.quantity ?? 0,
-                  amount: data?.byType?.sale?.amount ?? 0,
                 },
-              ]}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="entries" fill="rgb(59,130,246)" />
-              <Bar dataKey="quantity" fill="rgb(16,185,129)" />
-              <Bar dataKey="amount" fill="rgb(245,158,11)" />
-            </BarChart>
-          </ResponsiveContainer>
+              ];
+              const hasData = chartData.some((d) => (d.entries ?? 0) > 0 || (d.quantity ?? 0) > 0);
+              return hasData ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="entries" fill="rgb(59,130,246)" />
+                    <Bar dataKey="quantity" fill="rgb(16,185,129)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-gray-500">
+                  No data to display
+                </div>
+              );
+            })()
+          )}
         </div>
+      </Card>
+
+      <Card>
+        <h2 className="font-medium mb-3">Recent Entries</h2>
+        {loading ? (
+          <Skeleton className="h-28" />
+        ) : (data?.recentEntries ?? []).length === 0 ? (
+          <div className="text-sm text-gray-500 px-3 py-2">No recent entries</div>
+        ) : (
+          <div className="space-y-2 text-sm">
+            {(data?.recentEntries ?? []).map((e) => (
+              <div key={e._id} className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{e.entryNumber ?? e._id}</div>
+                  <div className="text-xs text-gray-500">
+                    {e.entryType} · Vendor:{' '}
+                    {typeof e.vendor === 'string' ? e.vendor : e.vendor?.name} · Vehicle:{' '}
+                    {typeof e.vehicle === 'string' ? e.vehicle : e.vehicle?.vehicleNumber}
+                  </div>
+                </div>
+                <div className="text-right text-xs">{formatDateTime(e.entryDate)}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -147,8 +199,9 @@ const PendingReviewList = ({ plantId }: { plantId: string }) => {
   const fetchPending = async () => {
     try {
       setLoading(true);
-      const list = await getEntries(withScope({ isReviewed: false }));
-      setItems(Array.isArray(list) ? list.filter((e) => !plantId || e.plant === plantId) : []);
+      // Ensure backend receives the correct filter and response is mapped
+      const res = await getEntries(withScope({ isReviewed: 'false' }));
+      setItems(res?.entries ?? []);
     } finally {
       setLoading(false);
     }
@@ -160,10 +213,9 @@ const PendingReviewList = ({ plantId }: { plantId: string }) => {
   }, [plantId]);
 
   const onReview = async (id: string) => {
-    const notes = prompt('Add review notes (optional)') ?? undefined;
     try {
       setReviewingId(id);
-      await reviewEntry(id, { isReviewed: true, reviewNotes: notes });
+      await reviewEntry(id, { isReviewed: true });
       await fetchPending();
     } finally {
       setReviewingId(null);
@@ -182,15 +234,17 @@ const PendingReviewList = ({ plantId }: { plantId: string }) => {
             <div className="flex items-center gap-3 text-sm">
               <Badge variant="warning">Pending</Badge>
               <span>{e.entryType}</span>
-              <span>Vendor: {e.vendor}</span>
-              <span>Vehicle: {e.vehicle}</span>
+              <span>Vendor: {typeof e.vendor === 'string' ? e.vendor : e.vendor?.name}</span>
+              <span>
+                Vehicle: {typeof e.vehicle === 'string' ? e.vehicle : e.vehicle?.vehicleNumber}
+              </span>
               <span>Entry Wt: {e.entryWeight ?? '-'}</span>
             </div>
             <Button
               size="sm"
               onClick={() => onReview(e._id)}
               loading={reviewingId === e._id}
-              disabled={reviewingId === e._id}
+              disabled={reviewingId === e._id || Boolean(e.varianceFlag)}
             >
               Mark Reviewed
             </Button>
