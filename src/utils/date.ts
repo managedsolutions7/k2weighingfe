@@ -36,9 +36,9 @@ export const formatDate = (iso: string | undefined | null, locale: string = 'en-
   return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: '2-digit' });
 };
 
-export const formatDateTime = (iso: string | undefined | null, locale: string = 'en-GB') => {
+export const formatDateTime = (iso: string | Date | undefined | null, locale: string = 'en-GB') => {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
   return d.toLocaleString(locale, {
     year: 'numeric',
@@ -48,4 +48,24 @@ export const formatDateTime = (iso: string | undefined | null, locale: string = 
     minute: '2-digit',
     hour12: true,
   });
+};
+
+export const formatCurrency = (
+  amount: number,
+  currency: string = 'INR',
+  locale: string = 'en-IN',
+) => {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+};
+
+export const formatWeight = (weight: number, unit: string = 'kg') => {
+  if (weight >= 1000) {
+    return `${(weight / 1000).toFixed(1)} MT`;
+  }
+  return `${weight.toFixed(0)} ${unit}`;
 };

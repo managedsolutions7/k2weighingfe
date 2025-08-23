@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { getEntries, reviewEntry, flagEntry, updateEntry, type Entry } from '@/api/entries';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import PageHeader from '@/components/ui/PageHeader';
@@ -22,7 +22,7 @@ const SupervisorEntries = () => {
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
 
-  const fetchEntries = async () => {
+  const fetchEntries = useCallback(async () => {
     try {
       setLoading(true);
       const res = await getEntries({ page, limit: pageSize });
@@ -33,7 +33,7 @@ const SupervisorEntries = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize]);
 
   useEffect(() => {
     void fetchEntries();
@@ -47,19 +47,22 @@ const SupervisorEntries = () => {
   const [updateSaving, setUpdateSaving] = useState(false);
   // flag reason collected via prompt for now
 
-  const onReview = async (id: string) => {
-    // Review without comments
-    try {
-      setReviewingId(id);
-      await reviewEntry(id, { isReviewed: true });
-      toastSuccess('Entry marked reviewed');
-      void fetchEntries();
-    } catch {
-      toastError('Failed to mark reviewed');
-    } finally {
-      setReviewingId(null);
-    }
-  };
+  const onReview = useCallback(
+    async (id: string) => {
+      // Review without comments
+      try {
+        setReviewingId(id);
+        await reviewEntry(id, { isReviewed: true });
+        toastSuccess('Entry marked reviewed');
+        void fetchEntries();
+      } catch {
+        toastError('Failed to mark reviewed');
+      } finally {
+        setReviewingId(null);
+      }
+    },
+    [fetchEntries],
+  );
 
   const [flagModal, setFlagModal] = useState<{ open: boolean; entry?: Entry; reason: string }>({
     open: false,
@@ -232,7 +235,7 @@ const SupervisorEntries = () => {
         ),
       },
     ],
-    [],
+    [flaggingId, onReview, reviewingId],
   );
 
   return (

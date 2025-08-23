@@ -45,7 +45,7 @@ const AsyncSelect = ({
       }
     };
     if (open && !disabled) void run();
-  }, [debounced, loadOptions, open]);
+  }, [debounced, loadOptions, open, disabled]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

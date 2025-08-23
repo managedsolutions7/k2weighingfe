@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   createInvoice,
   deleteInvoice,
-  downloadInvoice,
   getInvoices,
   type Invoice,
   updateInvoice,
+  getAvailableEntries,
+  generateInvoiceFromRange,
+  getInvoicePdf,
 } from '@/api/invoices';
 import Spinner from '@/components/common/Spinner';
 import { ConfirmDialog } from '@/components/common/Modal';
@@ -49,6 +51,28 @@ const InvoicesPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [materialRates, setMaterialRates] = useState<Record<string, number>>({});
   const [materialNames, setMaterialNames] = useState<Record<string, string>>({});
+  const [invoiceType, setInvoiceType] = useState<'purchase' | 'sale'>('purchase');
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [paletteRates, setPaletteRates] = useState<{ loose: number; packed: number }>({
+    loose: 0,
+    packed: 0,
+  });
+  const [materialsList, setMaterialsList] = useState<Array<{ _id: string; name: string }>>([]);
+  const [available, setAvailable] = useState<{
+    entries: Array<{
+      _id: string;
+      entryNumber: string;
+      entryDate: string;
+      vehicle?: { vehicleNumber?: string; driverName?: string } | string;
+      exactWeight?: number;
+      finalWeight?: number;
+      materialType?: { _id?: string; name: string } | null;
+      palletteType?: 'loose' | 'packed' | undefined;
+    }>;
+    total: number;
+    loading: boolean;
+  }>({ entries: [], total: 0, loading: false });
   // const [selectedEntries, setSelectedEntries] = useState<Entry[]>([]);
   const [confirm, setConfirm] = useState<{ open: boolean; id?: string }>({ open: false });
   const [saving, setSaving] = useState(false);
@@ -84,10 +108,93 @@ const InvoicesPage = () => {
     }
   };
 
+  const fetchAvailable = async () => {
+    try {
+      const plantId =
+        typeof form.plant === 'string' ? form.plant : (form.plant?._id as string | undefined);
+      const vendorId =
+        typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id as string | undefined);
+      if (!vendorId || !plantId || !rangeStart || !rangeEnd) {
+        setAvailable((s) => ({ ...s, entries: [], total: 0 }));
+        return;
+      }
+      setAvailable((s) => ({ ...s, loading: true }));
+      const res = await getAvailableEntries({
+        vendor: vendorId,
+        plant: plantId,
+        invoiceType,
+        startDate: rangeStart,
+        endDate: rangeEnd,
+        page: 1,
+        limit: 50,
+      });
+      const entries = res.entries ?? [];
+      setAvailable({ entries, total: res.total ?? 0, loading: false });
+      // derive material names from available entries for purchase flow
+      if (invoiceType === 'purchase') {
+        const names: Record<string, string> = {};
+        for (const e of entries) {
+          const materialType = e.materialType as { _id: string; name: string } | string | undefined;
+          const id = typeof materialType === 'string' ? materialType : materialType?._id;
+          const nm = typeof materialType === 'string' ? undefined : materialType?.name;
+          if (id && nm) names[id] = nm;
+        }
+        if (Object.keys(names).length) {
+          setMaterialNames(names);
+          setMaterialRates((prev) => {
+            const next = { ...prev };
+            for (const id of Object.keys(names)) if (next[id] == null) next[id] = 0;
+            return next;
+          });
+        }
+        // Also ensure rates exist for any material ids even without names
+        setMaterialRates((prev) => {
+          const next = { ...prev } as Record<string, number>;
+          for (const e of entries) {
+            const materialType = e.materialType as
+              | { _id: string; name: string }
+              | string
+              | undefined;
+            const id = typeof materialType === 'string' ? materialType : materialType?._id;
+            if (id && next[id] == null) next[id] = 0;
+          }
+          return next;
+        });
+      }
+    } catch {
+      setAvailable((s) => ({ ...s, loading: false }));
+      toastError('Failed to load available entries');
+    }
+  };
+
   useEffect(() => {
     void fetchInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, page]);
+
+  // Load all active materials once for manual rate entry
+  useEffect(() => {
+    const loadAllMaterials = async () => {
+      try {
+        const mats = await getMaterials({ isActive: true });
+        setMaterialsList(mats.map((m) => ({ _id: m._id, name: m.name })));
+        // Populate names if missing
+        setMaterialNames((prev) => {
+          const next = { ...prev } as Record<string, string>;
+          for (const m of mats) if (!next[m._id]) next[m._id] = m.name;
+          return next;
+        });
+      } catch {
+        // ignore load errors
+      }
+    };
+    if (invoiceType === 'purchase') void loadAllMaterials();
+  }, [invoiceType]);
+
+  useEffect(() => {
+    void fetchAvailable();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.vendor, form.plant, rangeStart, rangeEnd, invoiceType]);
 
   const columns: Column<Invoice>[] = [
     {
@@ -216,13 +323,15 @@ const InvoicesPage = () => {
 
   const onDownload = async (id: string) => {
     try {
-      const blob = await downloadInvoice(id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${id}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { url } = await getInvoicePdf(id);
+
+      if (!url) {
+        toastError('Download URL missing');
+        return;
+      }
+
+      // Just open the signed S3 URL – no CORS issues
+      window.open(url, '_blank');
     } catch {
       toastError('Failed to download invoice');
     }
@@ -232,20 +341,40 @@ const InvoicesPage = () => {
     e.preventDefault();
     try {
       setSaving(true);
-      const payload: Record<string, unknown> = {
-        vendor: typeof form.vendor === 'string' ? form.vendor : form.vendor?._id,
-        plant: typeof form.plant === 'string' ? form.plant : form.plant?._id,
-        entries: (form.entries ?? []).map((e) => e as string),
-        materialRates,
-        invoiceDate: form.invoiceDate,
-        dueDate: form.dueDate,
-      };
-      if (editingId) {
-        await updateInvoice(editingId, payload);
-        toastSuccess('Invoice updated');
+      const isRangeFlow = Boolean(rangeStart && rangeEnd && form.vendor && form.plant);
+      if (isRangeFlow) {
+        await generateInvoiceFromRange({
+          vendor: typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id as string),
+          plant: typeof form.plant === 'string' ? form.plant : (form.plant?._id as string),
+          invoiceType,
+          startDate: rangeStart,
+          endDate: rangeEnd,
+          materialRates:
+            invoiceType === 'purchase' && Object.keys(materialRates).length
+              ? materialRates
+              : undefined,
+          paletteRates: invoiceType === 'sale' ? paletteRates : undefined,
+          invoiceDate: undefined,
+          dueDate: undefined,
+        });
+        toastSuccess('Invoice generated');
       } else {
-        await createInvoice(payload);
-        toastSuccess('Invoice created');
+        const payload = {
+          vendor: (typeof form.vendor === 'string' ? form.vendor : form.vendor?._id) as string,
+          plant: (typeof form.plant === 'string' ? form.plant : form.plant?._id) as string,
+          entries: (form.entries ?? []).map((e) => e as string),
+          materialRates,
+          invoiceDate: form.invoiceDate,
+          dueDate: form.dueDate,
+          invoiceType,
+        };
+        if (editingId) {
+          await updateInvoice(editingId, payload);
+          toastSuccess('Invoice updated');
+        } else {
+          await createInvoice(payload);
+          toastSuccess('Invoice created');
+        }
       }
       setForm(emptyForm);
       setEditingId(null);
@@ -319,6 +448,17 @@ const InvoicesPage = () => {
               }
             />
           </FormField>
+          <FormField label="Invoice Type">
+            <Select
+              value={invoiceType}
+              onChange={(e) =>
+                setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
+              }
+            >
+              <option value="purchase">Purchase</option>
+              <option value="sale">Sale</option>
+            </Select>
+          </FormField>
         </FiltersBar>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -335,99 +475,157 @@ const InvoicesPage = () => {
           </Card>
           <form onSubmit={onSubmit} className="card p-4 space-y-3">
             <h2 className="font-medium">{editingId ? 'Edit Invoice' : 'Create Invoice'}</h2>
-            <AsyncSelect
-              value={plantIdValue ?? ''}
-              onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
-              loadOptions={loadPlantOptions}
-              placeholder="Search plant…"
-              ariaLabel="Plant"
-            />
+            <FormField label="Plant">
+              <AsyncSelect
+                value={plantIdValue ?? ''}
+                onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
+                loadOptions={loadPlantOptions}
+                placeholder="Search plant…"
+                ariaLabel="Plant"
+              />
+            </FormField>
             {(() => {
               const vendorIdValue =
                 typeof form.vendor === 'string'
                   ? form.vendor
                   : ((form.vendor?._id as string | undefined) ?? '');
               return (
-                <AsyncSelect
-                  value={vendorIdValue}
-                  onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
-                  loadOptions={loadVendorOptions}
-                  placeholder="Search vendor…"
-                  ariaLabel="Vendor"
-                />
+                <FormField label="Vendor">
+                  <AsyncSelect
+                    value={vendorIdValue}
+                    onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
+                    loadOptions={loadVendorOptions}
+                    placeholder="Search vendor…"
+                    ariaLabel="Vendor"
+                  />
+                </FormField>
               );
             })()}
-            <FormField label="Entry IDs (comma-separated)">
-              <Input
-                placeholder="Entry IDs (comma-separated)"
-                value={(form.entries ?? []).join(',')}
+            <FormField label="Invoice Type">
+              <Select
+                value={invoiceType}
                 onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    entries: (e.target as HTMLInputElement).value
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  }))
+                  setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
                 }
-              />
+              >
+                <option value="purchase">Purchase</option>
+                <option value="sale">Sale</option>
+              </Select>
             </FormField>
-            <FormField label="Invoice Date">
-              <Input
-                type="datetime-local"
-                value={form.invoiceDate ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, invoiceDate: (e.target as HTMLInputElement).value }))
-                }
-              />
-            </FormField>
-            <Card>
-              <h3 className="font-medium mb-2">Material Rates</h3>
-              <div className="space-y-2 text-sm">
-                {Object.keys(materialRates).length === 0 && (
-                  <div className="text-xs text-gray-500">Add rates after selecting entries.</div>
-                )}
-                {Object.entries(materialRates).map(([matId, rate]) => (
-                  <div key={matId} className="flex items-center gap-2">
-                    <div className="w-40">{materialNames[matId] ?? matId}</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <FormField label="Start Date">
+                <Input
+                  type="date"
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart((e.target as HTMLInputElement).value)}
+                />
+              </FormField>
+              <FormField label="End Date">
+                <Input
+                  type="date"
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd((e.target as HTMLInputElement).value)}
+                />
+              </FormField>
+            </div>
+            {/* Invoice Date removed */}
+            {invoiceType === 'purchase' && (
+              <Card>
+                <h3 className="font-medium mb-2">Material Rates</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-end gap-2">
+                    <FormField label="Add material">
+                      <Select
+                        value=""
+                        onChange={(e) => {
+                          const id = (e.target as HTMLSelectElement).value;
+                          if (!id) return;
+                          setMaterialRates((prev) => ({ ...prev, [id]: prev[id] ?? 0 }));
+                          setMaterialNames((prev) => ({
+                            ...prev,
+                            [id]: materialsList.find((m) => m._id === id)?.name ?? id,
+                          }));
+                        }}
+                      >
+                        <option value="">Select material…</option>
+                        {materialsList
+                          .filter((m) => materialRates[m._id] == null)
+                          .map((m) => (
+                            <option key={m._id} value={m._id}>
+                              {m.name}
+                            </option>
+                          ))}
+                      </Select>
+                    </FormField>
+                  </div>
+                  {Object.keys(materialRates).length === 0 && (
+                    <div className="text-xs text-gray-500">Add materials to specify rates.</div>
+                  )}
+                  {Object.entries(materialRates).map(([matId, rate]) => (
+                    <div key={matId} className="flex items-center gap-2">
+                      <div className="w-40 truncate" title={materialNames[matId] ?? matId}>
+                        {materialNames[matId] ?? matId}
+                      </div>
+                      <Input
+                        type="number"
+                        value={rate}
+                        onChange={(e) =>
+                          setMaterialRates((prev) => ({
+                            ...prev,
+                            [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                          }))
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setMaterialRates((prev) => {
+                            const next = { ...prev } as Record<string, number>;
+                            delete next[matId];
+                            return next;
+                          })
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+            {invoiceType === 'sale' && (
+              <Card>
+                <h3 className="font-medium mb-2">Palette Rates</h3>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <FormField label="Loose (₹/kg)">
                     <Input
                       type="number"
-                      value={rate}
+                      value={paletteRates.loose}
                       onChange={(e) =>
-                        setMaterialRates((prev) => ({
-                          ...prev,
-                          [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                        setPaletteRates((p) => ({
+                          ...p,
+                          loose: Number((e.target as HTMLInputElement).value) || 0,
                         }))
                       }
                     />
-                  </div>
-                ))}
-              </div>
-            </Card>
-            <FormField label="Due Date">
-              <Input
-                type="datetime-local"
-                value={form.dueDate ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dueDate: (e.target as HTMLInputElement).value }))
-                }
-              />
-            </FormField>
-            <FormField label="Status">
-              <Select
-                value={form.status ?? 'draft'}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    status: (e.target as HTMLSelectElement).value as 'draft' | 'sent' | 'paid',
-                  }))
-                }
-              >
-                <option value="draft">Draft</option>
-                <option value="sent">Sent</option>
-                <option value="paid">Paid</option>
-              </Select>
-            </FormField>
+                  </FormField>
+                  <FormField label="Packed (₹/kg)">
+                    <Input
+                      type="number"
+                      value={paletteRates.packed}
+                      onChange={(e) =>
+                        setPaletteRates((p) => ({
+                          ...p,
+                          packed: Number((e.target as HTMLInputElement).value) || 0,
+                        }))
+                      }
+                    />
+                  </FormField>
+                </div>
+              </Card>
+            )}
+            {/* Due Date and Status removed */}
             <div className="flex gap-2">
               <Button type="submit" loading={saving} disabled={saving}>
                 {editingId ? 'Update' : 'Create'}
@@ -438,6 +636,59 @@ const InvoicesPage = () => {
             </div>
           </form>
         </div>
+        <Card>
+          <h3 className="font-medium mb-2">Available Entries ({available.total})</h3>
+          {available.loading ? (
+            <Skeleton className="h-48" />
+          ) : (
+            <div className="overflow-x-auto border rounded">
+              <table className="min-w-[700px] w-full text-sm">
+                <thead className="bg-gray-50 text-left">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Entry #</th>
+                    <th className="px-3 py-2 font-semibold">Date</th>
+                    <th className="px-3 py-2 font-semibold">Vehicle</th>
+                    <th className="px-3 py-2 font-semibold">Driver</th>
+                    <th className="px-3 py-2 font-semibold">Weight (kg)</th>
+                    <th className="px-3 py-2 font-semibold">Material</th>
+                    <th className="px-3 py-2 font-semibold">Palette</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {available.entries.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
+                        No entries
+                      </td>
+                    </tr>
+                  ) : (
+                    available.entries.map((e) => (
+                      <tr key={e._id}>
+                        <td className="px-3 py-2">{e.entryNumber}</td>
+                        <td className="px-3 py-2">
+                          {new Date(e.entryDate).toLocaleDateString('en-GB')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {typeof e.vehicle === 'string'
+                            ? e.vehicle
+                            : (e.vehicle?.vehicleNumber ?? '')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {typeof e.vehicle === 'string' ? '' : (e.vehicle?.driverName ?? '')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {(e.finalWeight ?? e.exactWeight ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2">{e.materialType?.name ?? '—'}</td>
+                        <td className="px-3 py-2">{e.palletteType ?? '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
       <ConfirmDialog
         open={confirm.open}

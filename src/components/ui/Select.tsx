@@ -7,7 +7,6 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export const Select = ({ className, describedById, invalid, ...rest }: SelectProps) => (
-  // eslint-disable-next-line react/jsx-props-no-spreading
   <select
     className={twMerge('border rounded px-3 py-2 w-full', className)}
     aria-describedby={describedById}

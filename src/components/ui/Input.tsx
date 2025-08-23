@@ -7,7 +7,6 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = ({ className, describedById, invalid, ...rest }: InputProps) => (
-  // eslint-disable-next-line react/jsx-props-no-spreading
   <input
     className={twMerge('border rounded px-3 py-2 w-full', className)}
     aria-describedby={describedById}
