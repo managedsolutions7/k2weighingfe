@@ -48,6 +48,7 @@ const EntriesPage = () => {
   const [form, setForm] = useState<Partial<Entry>>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ open: boolean; id?: string }>({ open: false });
+  const [modalOpen, setModalOpen] = useState(false);
   const [exitPrompt, setExitPrompt] = useState<{
     open: boolean;
     id?: string;
@@ -225,17 +226,8 @@ const EntriesPage = () => {
 
   const onDownloadReceipt = async (entry: Entry) => {
     try {
-      // Lazy import to avoid circular imports at top if needed
       const { downloadEntryReceipt } = await import('@/api/entries');
-      const blob = await downloadEntryReceipt(entry._id);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${entry.entryNumber ?? entry._id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadEntryReceipt(entry._id);
     } catch {
       toastError('Failed to download receipt');
     }
@@ -283,6 +275,7 @@ const EntriesPage = () => {
       } else {
         await createEntry(payload);
         toastSuccess('Entry created');
+        setModalOpen(false);
       }
       setForm(emptyForm);
       setEditingId(null);
@@ -300,6 +293,14 @@ const EntriesPage = () => {
   };
 
   const columns: Column<Entry>[] = [
+    {
+      key: 'entryDate',
+      header: 'Entry Date',
+      render: (r) => {
+        const dt = r.entryDate ? new Date(r.entryDate) : null;
+        return dt ? dt.toLocaleString() : '';
+      },
+    },
     { key: 'entryType', header: 'Type' },
     {
       key: 'vendor',
@@ -335,6 +336,19 @@ const EntriesPage = () => {
     },
     { key: 'entryWeight', header: 'Entry Wt' },
     { key: 'exitWeight', header: 'Exit Wt' },
+    {
+      key: 'reviewStatus',
+      header: 'Review Status',
+      render: (r) =>
+        r.isReviewed ? (
+          <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-xs">
+            Reviewed
+          </span>
+        ) : (
+          <span className="text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded text-xs">Pending</span>
+        ),
+    },
+
     {
       key: 'varianceFlag',
       header: 'Variance Test',
@@ -420,7 +434,20 @@ const EntriesPage = () => {
             </div>
           }
         />
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              setForm(emptyForm);
+              setEditingId(null);
+              setModalOpen(true);
+            }}
+          >
+            Create Entry
+          </Button>
+        </div>
+        <div className="grid md:grid-cols-1 gap-6">
           <Card>
             {loading && entries.length === 0 ? (
               <Skeleton className="h-48" />
@@ -432,128 +459,140 @@ const EntriesPage = () => {
             )}
             {loading && entries.length > 0 && <Spinner />}
           </Card>
-          <form onSubmit={onSubmit} className="card p-4 space-y-3">
-            <h2 className="font-medium">{editingId ? 'Edit Entry' : 'Create Entry'}</h2>
-            <FormField label="Type">
-              <Select
-                value={form.entryType ?? 'sale'}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    entryType: (e.target as HTMLSelectElement).value as 'sale' | 'purchase',
-                  }))
-                }
-              >
-                <option value="sale">Sale</option>
-                <option value="purchase">Purchase</option>
-              </Select>
-            </FormField>
-            {/* Plant removed from create payload/UI */}
-            <FormField label="Vendor">
-              <AsyncSelect
-                value={typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id ?? '')}
-                onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
-                loadOptions={loadVendorOptions}
-                placeholder="Search vendor…"
-                ariaLabel="Vendor"
-              />
-            </FormField>
-            <FormField label="Vehicle">
-              <AsyncSelect
-                value={typeof form.vehicle === 'string' ? form.vehicle : (form.vehicle?._id ?? '')}
-                onChange={(v) => setForm((f) => ({ ...f, vehicle: v }))}
-                loadOptions={loadVehicleOptions}
-                placeholder="Search vehicle…"
-                ariaLabel="Vehicle"
-              />
-            </FormField>
-            <FormField
-              label="Driver's Name"
-              htmlFor="driverName"
-              error={errors.driverName as string | undefined}
-            >
-              <Input
-                id="driverName"
-                placeholder="Driver's name"
-                value={form.driverName ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
-                }
-                invalid={Boolean(errors.driverName)}
-              />
-            </FormField>
-            <FormField label="Driver's Phone" htmlFor="driverPhone">
-              <Input
-                id="driverPhone"
-                placeholder="Driver's phone (optional)"
-                value={form.driverPhone ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
-                }
-              />
-            </FormField>
-            <FormField
-              label={
-                form.entryType === 'sale' ? 'Unladen weight at entry' : 'Loaded weight at entry'
-              }
-              htmlFor="entryWeight"
-              hint="In kilograms"
-            >
-              <Input
-                id="entryWeight"
-                type="number"
-                placeholder="Entry Weight"
-                value={form.entryWeight ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    entryWeight: Number((e.target as HTMLInputElement).value) || undefined,
-                  }))
-                }
-                describedById="entryWeight-hint"
-              />
-            </FormField>
-            {/* Sale pallette details will be captured during exit, not at entry */}
-            {form.entryType === 'purchase' && (
-              <FormField label="Material Type">
+
+          <Modal
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            title={editingId ? 'Edit Entry' : 'Create Entry'}
+          >
+            <form onSubmit={onSubmit} className="card p-4 space-y-3">
+              <h2 className="font-medium">{editingId ? 'Edit Entry' : 'Create Entry'}</h2>
+              <FormField label="Type">
                 <Select
-                  value={
-                    typeof form.materialType === 'string'
-                      ? form.materialType
-                      : (form.materialType?._id ?? '')
-                  }
+                  value={form.entryType ?? 'sale'}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, materialType: (e.target as HTMLSelectElement).value }))
+                    setForm((f) => ({
+                      ...f,
+                      entryType: (e.target as HTMLSelectElement).value as 'sale' | 'purchase',
+                    }))
                   }
                 >
-                  <option value="">Select material…</option>
-                  {materialOptions.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
+                  <option value="sale">Sale</option>
+                  <option value="purchase">Purchase</option>
                 </Select>
               </FormField>
-            )}
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={Boolean(form.manualWeight)}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, manualWeight: (e.target as HTMLInputElement).checked }))
+              {/* Plant removed from create payload/UI */}
+              <FormField label="Vendor">
+                <AsyncSelect
+                  value={typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id ?? '')}
+                  onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
+                  loadOptions={loadVendorOptions}
+                  placeholder="Search vendor…"
+                  ariaLabel="Vendor"
+                />
+              </FormField>
+              <FormField label="Vehicle">
+                <AsyncSelect
+                  value={
+                    typeof form.vehicle === 'string' ? form.vehicle : (form.vehicle?._id ?? '')
+                  }
+                  onChange={(v) => setForm((f) => ({ ...f, vehicle: v }))}
+                  loadOptions={loadVehicleOptions}
+                  placeholder="Search vehicle…"
+                  ariaLabel="Vehicle"
+                />
+              </FormField>
+              <FormField
+                label="Driver's Name"
+                htmlFor="driverName"
+                error={errors.driverName as string | undefined}
+              >
+                <Input
+                  id="driverName"
+                  placeholder="Driver's name"
+                  value={form.driverName ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
+                  }
+                  invalid={Boolean(errors.driverName)}
+                />
+              </FormField>
+              <FormField label="Driver's Phone" htmlFor="driverPhone">
+                <Input
+                  id="driverPhone"
+                  placeholder="Driver's phone (optional)"
+                  value={form.driverPhone ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
+                  }
+                />
+              </FormField>
+              <FormField
+                label={
+                  form.entryType === 'sale' ? 'Unladen weight at entry' : 'Loaded weight at entry'
                 }
-              />
-              Manual weight (hardware offline)
-            </label>
-            <div className="flex gap-2">
-              <Button type="submit" loading={formSaving} disabled={formSaving}>
-                {editingId ? 'Update' : 'Create'}
-              </Button>
-              <Button type="button" variant="outline" onClick={onResetForm}>
-                Reset
-              </Button>
-            </div>
-          </form>
+                htmlFor="entryWeight"
+                hint="In kilograms"
+              >
+                <Input
+                  id="entryWeight"
+                  type="number"
+                  placeholder="Entry Weight"
+                  value={form.entryWeight ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      entryWeight: Number((e.target as HTMLInputElement).value) || undefined,
+                    }))
+                  }
+                  describedById="entryWeight-hint"
+                />
+              </FormField>
+              {/* Sale pallette details will be captured during exit, not at entry */}
+              {form.entryType === 'purchase' && (
+                <FormField label="Material Type">
+                  <Select
+                    value={
+                      typeof form.materialType === 'string'
+                        ? form.materialType
+                        : (form.materialType?._id ?? '')
+                    }
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        materialType: (e.target as HTMLSelectElement).value,
+                      }))
+                    }
+                  >
+                    <option value="">Select material…</option>
+                    {materialOptions.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
+              )}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.manualWeight)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, manualWeight: (e.target as HTMLInputElement).checked }))
+                  }
+                />
+                Manual weight (hardware offline)
+              </label>
+              <div className="flex gap-2">
+                <Button type="submit" loading={formSaving} disabled={formSaving}>
+                  {editingId ? 'Update' : 'Create'}
+                </Button>
+                <Button type="button" variant="outline" onClick={onResetForm}>
+                  Reset
+                </Button>
+              </div>
+            </form>
+          </Modal>
         </div>
       </div>
       <ConfirmDialog

@@ -13,6 +13,8 @@ import { Modal } from '@/components/common/Modal';
 import Input from '@/components/ui/Input';
 import FormField from '@/components/ui/FormField';
 import { formatDateTime } from '@/utils/date';
+import SearchBar from '@/components/common/SearchBar';
+import { useScopedParams } from '@/hooks/useScopedApi';
 
 const SupervisorEntries = () => {
   const user = useAppSelector((s) => s.auth.user);
@@ -21,30 +23,39 @@ const SupervisorEntries = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const { withScope } = useScopedParams();
 
-  const fetchEntries = useCallback(async () => {
+  const fetchEntries = async () => {
     try {
       setLoading(true);
-      const res = await getEntries({ page, limit: pageSize });
-      setEntries(res.entries ?? []);
-      setTotal(res.total ?? res.entries?.length ?? 0);
+      const params = withScope({ q: query || undefined, page, limit: pageSize }) as Record<
+        string,
+        unknown
+      >;
+      // For operator, default to last 24 hours
+      const to = new Date();
+      const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+      (params.from as string) = from.toISOString();
+      (params.to as string) = to.toISOString();
+      const res = await getEntries(params as never);
+      const list = res.entries ?? [];
+      setTotal(res.total ?? list.length);
+      setEntries(list);
     } catch {
       toastError('Failed to fetch entries');
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
-
-  useEffect(() => {
-    void fetchEntries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.plantId, page]);
+  };
 
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [updateModal, setUpdateModal] = useState<{ open: boolean; entry?: Entry }>({ open: false });
   const [updateForm, setUpdateForm] = useState<Partial<Entry>>({});
   const [updateSaving, setUpdateSaving] = useState(false);
+  const [pendingQuery, setPendingQuery] = useState('');
+  const [query, setQuery] = useState('');
+
   // flag reason collected via prompt for now
 
   const onReview = useCallback(
@@ -237,10 +248,46 @@ const SupervisorEntries = () => {
     ],
     [flaggingId, onReview, reviewingId],
   );
+  useEffect(() => {
+    void fetchEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, page, user?.role]);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Entries" />
+      <PageHeader
+        title="Entries"
+        actions={
+          <div className="flex flex-wrap gap-2 items-center">
+            <SearchBar
+              value={pendingQuery}
+              onChange={setPendingQuery}
+              placeholder="Search by entry no (ENT-*)"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setQuery(pendingQuery);
+                setPage(1);
+              }}
+            >
+              Search
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingQuery('');
+                setQuery('');
+                setPage(1);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        }
+      />
       <Card>
         {loading && entries.length === 0 ? (
           <Skeleton className="h-48" />

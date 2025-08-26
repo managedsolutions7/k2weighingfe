@@ -86,8 +86,9 @@ export type ExitUpdatePayload =
 export const updateEntryExit = async (id: string, payload: ExitUpdatePayload) =>
   unwrap<Entry>(api.patch(`/api/entries/${id}/exit`, payload));
 
-export const downloadEntryReceipt = async (id: string) =>
-  unwrap<Blob>(api.get(`/api/entries/${id}/receipt`, { responseType: 'blob' }));
-
+export const downloadEntryReceipt = async (id: string) => {
+  const { url } = await api.get<{ url: string }>(`/api/entries/${id}/receipt`).then((r) => r.data);
+  window.open(url, '_blank'); // 🔥 opens directly from S3 in new tab
+};
 export const flagEntry = async (id: string, payload: { flagged: boolean; flagReason?: string }) =>
   unwrap<Entry>(api.patch(`/api/entries/${id}/flag`, payload));

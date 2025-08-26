@@ -17,6 +17,7 @@ const OperatorDashboard = () => {
     totals?: { totalEntries?: number; totalQuantity?: number };
     counters?: { pendingReviews?: number; flagged?: number };
     recentEntries?: Array<{
+      exactWeight: number;
       _id: string;
       entryType?: string;
       vendor?: string | { name?: string };
@@ -136,9 +137,9 @@ const OperatorDashboard = () => {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
-              data={(data?.recentEntries ?? []).map((e) => ({
-                name: e.entryDate?.slice(5, 10) ?? '',
-                qty: e.entryWeight ?? 0,
+              data={(data?.recentEntries ?? []).map((e, idx) => ({
+                name: e.entryDate ? formatDateTime(e.entryDate) : `Entry ${idx + 1}`,
+                qty: e.exactWeight ?? 0,
               }))}
             >
               <CartesianGrid strokeDasharray="3 3" />

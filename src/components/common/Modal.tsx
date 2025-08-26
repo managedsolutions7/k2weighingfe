@@ -16,14 +16,14 @@ export const Modal = ({ open, onClose, title, children }: ModalProps) => {
       aria-modal="true"
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-white rounded shadow-lg w-full max-w-md">
+      <div className="relative bg-white rounded shadow-lg w-full max-w-md max-h-[90vh] flex flex-col">
         <div className="border-b px-4 py-3 flex items-center justify-between">
           <h3 className="font-semibold">{title}</h3>
           <button aria-label="Close" className="p-1" onClick={onClose}>
             ✕
           </button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className="p-4 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

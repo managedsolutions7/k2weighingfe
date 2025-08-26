@@ -11,7 +11,6 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Skeleton from '@/components/ui/Skeleton';
 import DataTable, { type Column } from '@/components/common/DataTable';
-import SearchBar from '@/components/common/SearchBar';
 import Pagination from '@/components/common/Pagination';
 import { ConfirmDialog } from '@/components/common/Modal';
 import FormField from '@/components/ui/FormField';
@@ -28,9 +27,7 @@ const emptyForm: Partial<Material> = {
 
 const MaterialsPage = () => {
   const [list, setList] = useState<Material[]>([]);
-  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeOnly, setActiveOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -43,10 +40,7 @@ const MaterialsPage = () => {
   const fetchMaterials = async () => {
     try {
       setLoading(true);
-      const all = await getMaterials({
-        q: query || undefined,
-        isActive: activeOnly ? true : undefined,
-      });
+      const all = await getMaterials();
       setTotal(all.length);
       const start = (page - 1) * pageSize;
       setList(all.slice(start, start + pageSize));
@@ -60,7 +54,7 @@ const MaterialsPage = () => {
   useEffect(() => {
     void fetchMaterials();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, page]);
+  }, [page]);
 
   const columns: Column<Material>[] = useMemo(
     () => [
@@ -138,21 +132,7 @@ const MaterialsPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Materials"
-        actions={
-          <div className="flex items-center gap-2">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search materials (q)" />
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={activeOnly}
-                onChange={(e) => setActiveOnly((e.target as HTMLInputElement).checked)}
-              />
-              Active only
-            </label>
-          </div>
-        }
-      />
+      <PageHeader title="Materials" />
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           {loading && list.length === 0 ? (

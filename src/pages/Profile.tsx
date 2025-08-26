@@ -48,8 +48,6 @@ const ProfilePage = () => {
     void load();
   }, [load]);
 
-  // Password change disabled on frontend
-
   return (
     <section className="space-y-6">
       <PageHeader title="Profile" />
@@ -75,7 +73,6 @@ const ProfilePage = () => {
           <div className="text-sm text-gray-500">No profile data</div>
         )}
       </Card>
-      {/* Password change form removed per requirement */}
     </section>
   );
 };

@@ -4,7 +4,7 @@ import Spinner from '@/components/common/Spinner';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import SearchBar from '@/components/common/SearchBar';
 import Pagination from '@/components/common/Pagination';
-import { ConfirmDialog } from '@/components/common/Modal';
+import { ConfirmDialog, Modal } from '@/components/common/Modal';
 import { toastError, toastSuccess } from '@/utils/toast';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import PageHeader from '@/components/ui/PageHeader';
@@ -30,6 +30,14 @@ const emptyForm: Partial<Vendor> = {
   isActive: true,
 };
 
+export interface Plant {
+  _id: string;
+  name: string;
+  code: string;
+  location?: string;
+  address?: string;
+  isActive: boolean;
+}
 const VendorsPage = () => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [query, setQuery] = useState('');
@@ -44,6 +52,8 @@ const VendorsPage = () => {
   const [errors, setErrors] = useState<FieldErrors<Partial<Vendor>>>({});
   const { withScope } = useScopedParams();
   const { options: plantOptions, loading: plantsLoading } = usePlantsOptions();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pendingQuery, setPendingQuery] = useState('');
 
   const fetchVendors = async () => {
     try {
@@ -70,6 +80,22 @@ const VendorsPage = () => {
       { key: 'code', header: 'Code' },
       { key: 'phone', header: 'Phone' },
       { key: 'email', header: 'Email' },
+      {
+        key: 'linkedPlants',
+        header: 'Linked Plants',
+        render: (r) =>
+          Array.isArray(r.linkedPlants) && r.linkedPlants.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {r.linkedPlants.map((plant: Plant | string, idx: number) => (
+                <Badge key={typeof plant === 'string' ? plant : plant._id || idx} variant="default">
+                  {typeof plant === 'string' ? plant : plant.code || plant.name || plant._id}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-gray-400">—</span>
+          ),
+      },
       {
         key: 'isActive',
         header: 'Active',
@@ -98,6 +124,7 @@ const VendorsPage = () => {
   );
 
   const onEdit = (vendor: Vendor) => {
+    setModalOpen(true);
     setEditingId(vendor._id);
     setForm({ ...vendor });
   };
@@ -133,15 +160,24 @@ const VendorsPage = () => {
       const gstErr = isGST(form.gstNumber);
       if (gstErr) nextErrors.gstNumber = gstErr;
     }
+
+    // Ensure linkedPlants is an array of string IDs
+    const cleanedForm = {
+      ...form,
+      linkedPlants: (form.linkedPlants ?? []).map((p: Plant | string) =>
+        typeof p === 'string' ? p : p._id,
+      ),
+    };
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     try {
       setSaving(true);
       if (editingId) {
-        await updateVendor(editingId, form);
+        await updateVendor(editingId, cleanedForm);
         toastSuccess('Vendor updated');
       } else {
-        await createVendor(form);
+        await createVendor(cleanedForm);
         toastSuccess('Vendor created');
       }
       setForm(emptyForm);
@@ -151,6 +187,7 @@ const VendorsPage = () => {
       toastError('Failed to save vendor');
     } finally {
       setSaving(false);
+      setModalOpen(false);
     }
   };
 
@@ -164,10 +201,50 @@ const VendorsPage = () => {
       <PageHeader
         title="Vendors"
         actions={
-          <SearchBar value={query} onChange={setQuery} placeholder="Search by name/code/VEN-*" />
+          <div className="flex flex-wrap gap-2 items-center">
+            <SearchBar
+              value={pendingQuery}
+              onChange={setPendingQuery}
+              placeholder="Search by name/code/VEN-*"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setQuery(pendingQuery);
+                setPage(1);
+              }}
+            >
+              Search
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingQuery('');
+                setQuery('');
+                setPage(1);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
         }
       />
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => {
+            setForm(emptyForm);
+            setEditingId(null);
+            setModalOpen(true);
+          }}
+        >
+          Create Vendor
+        </Button>
+      </div>
+      <div className="grid md:grid-cols-1 gap-6">
         <div className="card">
           {loading && vendors.length === 0 ? (
             <Skeleton className="h-48" />
@@ -179,140 +256,147 @@ const VendorsPage = () => {
           )}
           {loading && vendors.length > 0 && <Spinner />}
         </div>
-        <form onSubmit={onSubmit} className="card p-4 space-y-3" aria-label="Vendor form">
-          <h2 className="font-medium">{editingId ? 'Edit Vendor' : 'Create Vendor'}</h2>
-          <FormField label="Name" required htmlFor="vendor-name" error={errors.name}>
-            <Input
-              id="vendor-name"
-              placeholder="Name"
-              value={form.name ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, name: (e.target as HTMLInputElement).value }))
-              }
-              required
-              describedById={errors.name ? 'vendor-name-error' : undefined}
-              invalid={Boolean(errors.name)}
-            />
-          </FormField>
-          <FormField label="Code">
-            <Input
-              placeholder="Code"
-              value={form.code ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, code: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Phone">
-            <Input
-              placeholder="Phone"
-              value={form.phone ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, phone: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Email" htmlFor="vendor-email" error={errors.email}>
-            <Input
-              id="vendor-email"
-              placeholder="Email"
-              value={form.email ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, email: (e.target as HTMLInputElement).value }))
-              }
-              describedById={errors.email ? 'vendor-email-error' : undefined}
-              invalid={Boolean(errors.email)}
-            />
-          </FormField>
-          <FormField
-            label="Contact Person"
-            required
-            htmlFor="vendor-contact"
-            error={errors.contactPerson}
-          >
-            <Input
-              id="vendor-contact"
-              placeholder="Contact Person"
-              value={form.contactPerson ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, contactPerson: (e.target as HTMLInputElement).value }))
-              }
-              required
-              describedById={errors.contactPerson ? 'vendor-contact-error' : undefined}
-              invalid={Boolean(errors.contactPerson)}
-            />
-          </FormField>
-          <FormField label="GST Number" htmlFor="vendor-gst" error={errors.gstNumber}>
-            <Input
-              id="vendor-gst"
-              placeholder="GSTIN (e.g., 27ABCDE1234F1Z5)"
-              value={form.gstNumber ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  gstNumber: (e.target as HTMLInputElement).value.toUpperCase(),
-                }))
-              }
-              describedById={errors.gstNumber ? 'vendor-gst-error' : undefined}
-              invalid={Boolean(errors.gstNumber)}
-            />
-          </FormField>
-          <FormField label="Address">
-            <Input
-              placeholder="Address"
-              value={form.address ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, address: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Linked Plants" hint="Associate this vendor with one or more plants">
-            {plantsLoading ? (
-              <Skeleton className="h-10" />
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-2">
-                {plantOptions.map((opt) => {
-                  const checked = (form.linkedPlants ?? []).includes(opt.value);
-                  return (
-                    <label key={opt.value} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={checked}
-                        onChange={(e) =>
-                          setForm((f) => {
-                            const next = new Set(f.linkedPlants ?? []);
-                            if ((e.target as HTMLInputElement).checked) next.add(opt.value);
-                            else next.delete(opt.value);
-                            return { ...f, linkedPlants: Array.from(next) };
-                          })
-                        }
-                      />
-                      {opt.label}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </FormField>
-          <FormField label="Active">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.isActive ?? true}
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={editingId ? 'Edit Vendor' : 'Create Vendor'}
+        >
+          <form onSubmit={onSubmit} className="card p-4 space-y-3" aria-label="Vendor form">
+            <h2 className="font-medium">{editingId ? 'Edit Vendor' : 'Create Vendor'}</h2>
+            <FormField label="Name" required htmlFor="vendor-name" error={errors.name}>
+              <Input
+                id="vendor-name"
+                placeholder="Name"
+                value={form.name ?? ''}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  setForm((f) => ({ ...f, name: (e.target as HTMLInputElement).value }))
+                }
+                required
+                describedById={errors.name ? 'vendor-name-error' : undefined}
+                invalid={Boolean(errors.name)}
+              />
+            </FormField>
+            <FormField label="Code">
+              <Input
+                placeholder="Code"
+                value={form.code ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, code: (e.target as HTMLInputElement).value }))
                 }
               />
-              Active
-            </label>
-          </FormField>
-          <div className="flex gap-2">
-            <Button type="submit" loading={saving} disabled={saving}>
-              {editingId ? 'Update' : 'Create'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onResetForm}>
-              Reset
-            </Button>
-          </div>
-        </form>
+            </FormField>
+
+            <FormField label="Phone">
+              <Input
+                placeholder="Phone"
+                value={form.phone ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, phone: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </FormField>
+            <FormField label="Email" htmlFor="vendor-email" error={errors.email}>
+              <Input
+                id="vendor-email"
+                placeholder="Email"
+                value={form.email ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, email: (e.target as HTMLInputElement).value }))
+                }
+                describedById={errors.email ? 'vendor-email-error' : undefined}
+                invalid={Boolean(errors.email)}
+              />
+            </FormField>
+            <FormField
+              label="Contact Person"
+              required
+              htmlFor="vendor-contact"
+              error={errors.contactPerson}
+            >
+              <Input
+                id="vendor-contact"
+                placeholder="Contact Person"
+                value={form.contactPerson ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, contactPerson: (e.target as HTMLInputElement).value }))
+                }
+                required
+                describedById={errors.contactPerson ? 'vendor-contact-error' : undefined}
+                invalid={Boolean(errors.contactPerson)}
+              />
+            </FormField>
+            <FormField label="GST Number" htmlFor="vendor-gst" error={errors.gstNumber}>
+              <Input
+                id="vendor-gst"
+                placeholder="GSTIN (e.g., 27ABCDE1234F1Z5)"
+                value={form.gstNumber ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    gstNumber: (e.target as HTMLInputElement).value.toUpperCase(),
+                  }))
+                }
+                describedById={errors.gstNumber ? 'vendor-gst-error' : undefined}
+                invalid={Boolean(errors.gstNumber)}
+              />
+            </FormField>
+            <FormField label="Address">
+              <Input
+                placeholder="Address"
+                value={form.address ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, address: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </FormField>
+            <FormField label="Linked Plants" hint="Associate this vendor with one or more plants">
+              {plantsLoading ? (
+                <Skeleton className="h-10" />
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {plantOptions.map((opt) => {
+                    const checked = (form.linkedPlants ?? []).includes(opt.value);
+                    return (
+                      <label key={opt.value} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) =>
+                            setForm((f) => {
+                              const next = new Set(f.linkedPlants ?? []);
+                              if ((e.target as HTMLInputElement).checked) next.add(opt.value);
+                              else next.delete(opt.value);
+                              return { ...f, linkedPlants: Array.from(next) };
+                            })
+                          }
+                        />
+                        {opt.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </FormField>
+            <FormField label="Active">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.isActive ?? true}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  }
+                />
+                Active
+              </label>
+            </FormField>
+            <div className="flex gap-2">
+              <Button type="submit" loading={saving} disabled={saving}>
+                {editingId ? 'Update' : 'Create'}
+              </Button>
+              <Button type="button" variant="outline" onClick={onResetForm}>
+                Reset
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </div>
       <ConfirmDialog
         open={confirm.open}

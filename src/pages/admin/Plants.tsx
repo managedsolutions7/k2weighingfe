@@ -14,7 +14,7 @@ import Checkbox from '@/components/ui/Checkbox';
 import FormField from '@/components/ui/FormField';
 import Pagination from '@/components/common/Pagination';
 import { toastError, toastSuccess } from '@/utils/toast';
-import { ConfirmDialog } from '@/components/common/Modal';
+import { ConfirmDialog, Modal } from '@/components/common/Modal';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import { required, type FieldErrors } from '@/utils/validators';
 
@@ -33,6 +33,7 @@ const PlantsPage = () => {
   const [errors, setErrors] = useState<FieldErrors<Partial<Plant>>>({});
   const { withScope } = useScopedParams();
   const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchPlants = async () => {
     try {
@@ -94,6 +95,7 @@ const PlantsPage = () => {
   );
 
   const onEdit = (plant: Plant) => {
+    setModalOpen(true);
     setEditingId(plant._id);
     setForm({ ...plant });
   };
@@ -138,6 +140,7 @@ const PlantsPage = () => {
       toastError('Failed to save plant');
     } finally {
       setSaving(false);
+      setModalOpen(false);
     }
   };
 
@@ -152,8 +155,20 @@ const PlantsPage = () => {
         title="Plants"
         actions={<SearchBar value={query} onChange={setQuery} placeholder="Search by name/code" />}
       />
-
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => {
+            setForm(emptyForm);
+            setEditingId(null);
+            setModalOpen(true);
+          }}
+        >
+          Create Plant
+        </Button>
+      </div>
+      <div className="grid md:grid-cols-1 gap-6">
         <Card>
           {loading && plants.length === 0 ? (
             <Skeleton className="h-48" />
@@ -165,88 +180,94 @@ const PlantsPage = () => {
           )}
           {loading && plants.length > 0 && <Spinner />}
         </Card>
-        <form onSubmit={onSubmit} className="card p-4 space-y-3">
-          <h2 className="font-medium">{editingId ? 'Edit Plant' : 'Create Plant'}</h2>
-          <FormField
-            label="Name"
-            required
-            htmlFor="plant-name"
-            hint="Human-readable name"
-            error={errors.name}
-          >
-            <Input
-              id="plant-name"
-              placeholder="Name"
-              value={form.name ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, name: (e.target as HTMLInputElement).value }))
-              }
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={editingId ? 'Edit Plant' : 'Create Plant'}
+        >
+          <form onSubmit={onSubmit} className="card p-4 space-y-3">
+            <h2 className="font-medium">{editingId ? 'Edit Plant' : 'Create Plant'}</h2>
+            <FormField
+              label="Name"
               required
-              describedById={errors.name ? 'plant-name-error' : 'plant-name-hint'}
-              invalid={Boolean(errors.name)}
-            />
-          </FormField>
-          {/* Inline errors example */}
-          {/* {errors.name && <div className="text-xs text-red-600">{errors.name}</div>} */}
-          <FormField
-            label="Code"
-            required
-            htmlFor="plant-code"
-            hint="Short code (e.g., BLR)"
-            error={errors.code}
-          >
-            <Input
-              id="plant-code"
-              placeholder="Code"
-              value={form.code ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, code: (e.target as HTMLInputElement).value }))
-              }
-              required
-              describedById={errors.code ? 'plant-code-error' : 'plant-code-hint'}
-              invalid={Boolean(errors.code)}
-            />
-          </FormField>
-          <FormField label="Location" htmlFor="plant-location">
-            <Input
-              id="plant-location"
-              placeholder="Location"
-              value={form.location ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, location: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Address" htmlFor="plant-address">
-            <Input
-              id="plant-address"
-              placeholder="Address"
-              value={form.address ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, address: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Active">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.isActive ?? true}
+              htmlFor="plant-name"
+              hint="Human-readable name"
+              error={errors.name}
+            >
+              <Input
+                id="plant-name"
+                placeholder="Name"
+                value={form.name ?? ''}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  setForm((f) => ({ ...f, name: (e.target as HTMLInputElement).value }))
+                }
+                required
+                describedById={errors.name ? 'plant-name-error' : 'plant-name-hint'}
+                invalid={Boolean(errors.name)}
+              />
+            </FormField>
+            {/* Inline errors example */}
+            {/* {errors.name && <div className="text-xs text-red-600">{errors.name}</div>} */}
+            <FormField
+              label="Code"
+              required
+              htmlFor="plant-code"
+              hint="Short code (e.g., BLR)"
+              error={errors.code}
+            >
+              <Input
+                id="plant-code"
+                placeholder="Code"
+                value={form.code ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, code: (e.target as HTMLInputElement).value }))
+                }
+                required
+                describedById={errors.code ? 'plant-code-error' : 'plant-code-hint'}
+                invalid={Boolean(errors.code)}
+              />
+            </FormField>
+            <FormField label="Location" htmlFor="plant-location">
+              <Input
+                id="plant-location"
+                placeholder="Location"
+                value={form.location ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, location: (e.target as HTMLInputElement).value }))
                 }
               />
-              Active
-            </label>
-          </FormField>
-          <div className="flex gap-2">
-            <Button type="submit" loading={saving} disabled={saving}>
-              {editingId ? 'Update' : 'Create'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onResetForm}>
-              Reset
-            </Button>
-          </div>
-        </form>
+            </FormField>
+            <FormField label="Address" htmlFor="plant-address">
+              <Input
+                id="plant-address"
+                placeholder="Address"
+                value={form.address ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, address: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </FormField>
+            <FormField label="Active">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.isActive ?? true}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  }
+                />
+                Active
+              </label>
+            </FormField>
+            <div className="flex gap-2">
+              <Button type="submit" loading={saving} disabled={saving}>
+                {editingId ? 'Update' : 'Create'}
+              </Button>
+              <Button type="button" variant="outline" onClick={onResetForm}>
+                Reset
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </div>
       <ConfirmDialog
         open={confirm.open}

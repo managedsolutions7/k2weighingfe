@@ -20,7 +20,7 @@ import Select from '@/components/ui/Select';
 import Checkbox from '@/components/ui/Checkbox';
 import FormField from '@/components/ui/FormField';
 import Pagination from '@/components/common/Pagination';
-import { ConfirmDialog } from '@/components/common/Modal';
+import { ConfirmDialog, Modal } from '@/components/common/Modal';
 import { toastError, toastSuccess } from '@/utils/toast';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import { required, type FieldErrors } from '@/utils/validators';
@@ -48,6 +48,8 @@ const VehiclesPage = () => {
   const [, /* errors */ setErrors] = useState<FieldErrors<Partial<Vehicle>>>({});
   const { withScope } = useScopedParams();
   const [saving, setSaving] = useState(false);
+  const [pendingQuery, setPendingQuery] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchVehicles = async () => {
     try {
@@ -103,6 +105,7 @@ const VehiclesPage = () => {
   );
 
   const onEdit = (vehicle: Vehicle) => {
+    setModalOpen(true);
     setEditingId(vehicle._id);
     setForm({ ...vehicle });
   };
@@ -145,6 +148,7 @@ const VehiclesPage = () => {
       toastError('Failed to save vehicle');
     } finally {
       setSaving(false);
+      setModalOpen(false);
     }
   };
 
@@ -158,14 +162,50 @@ const VehiclesPage = () => {
       <PageHeader
         title="Vehicles"
         actions={
-          <SearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search by vehicle no/code (VEH-*)"
-          />
+          <div className="flex flex-wrap gap-2 items-center">
+            <SearchBar
+              value={pendingQuery}
+              onChange={setPendingQuery}
+              placeholder="Search by vehicle no/code (VEH-*)"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setQuery(pendingQuery);
+                setPage(1);
+              }}
+            >
+              Search
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingQuery('');
+                setQuery('');
+                setPage(1);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
         }
       />
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => {
+            setForm(emptyForm);
+            setEditingId(null);
+            setModalOpen(true);
+          }}
+        >
+          Create Vehicle
+        </Button>
+      </div>
+      <div className="grid md:grid-cols-1 gap-6">
         <Card>
           {loading && vehicles.length === 0 ? (
             <Skeleton className="h-48" />
@@ -177,96 +217,102 @@ const VehiclesPage = () => {
           )}
           {loading && vehicles.length > 0 && <Spinner />}
         </Card>
-        <form onSubmit={onSubmit} className="card p-4 space-y-3">
-          <h2 className="font-medium">{editingId ? 'Edit Vehicle' : 'Create Vehicle'}</h2>
-          <FormField label="Vehicle Number" required>
-            <Input
-              placeholder="Vehicle Number"
-              value={form.vehicleNumber ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, vehicleNumber: (e.target as HTMLInputElement).value }))
-              }
-              required
-            />
-          </FormField>
-          <FormField label="Type">
-            <Select
-              value={form.vehicleType ?? 'buy'}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  vehicleType: (e.target as HTMLSelectElement).value as 'buy' | 'sell',
-                }))
-              }
-            >
-              <option value="buy">Buy</option>
-              <option value="sell">Sell</option>
-            </Select>
-          </FormField>
-          <FormField label="Capacity">
-            <Input
-              type="number"
-              placeholder="Capacity"
-              value={form.capacity ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  capacity: Number((e.target as HTMLInputElement).value) || undefined,
-                }))
-              }
-            />
-          </FormField>
-          <FormField label="Driver Name">
-            <Input
-              placeholder="Driver Name"
-              value={form.driverName ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Driver Phone">
-            <Input
-              placeholder="Driver Phone"
-              value={form.driverPhone ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
-              }
-            />
-          </FormField>
-          <FormField label="Tare Weight">
-            <Input
-              type="number"
-              placeholder="Tare Weight"
-              value={form.tareWeight ?? ''}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  tareWeight: Number((e.target as HTMLInputElement).value) || undefined,
-                }))
-              }
-            />
-          </FormField>
-          <FormField label="Active">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.isActive ?? true}
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={editingId ? 'Edit Vendor' : 'Create Vendor'}
+        >
+          <form onSubmit={onSubmit} className="card p-4 space-y-3">
+            <h2 className="font-medium">{editingId ? 'Edit Vehicle' : 'Create Vehicle'}</h2>
+            <FormField label="Vehicle Number" required>
+              <Input
+                placeholder="Vehicle Number"
+                value={form.vehicleNumber ?? ''}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  setForm((f) => ({ ...f, vehicleNumber: (e.target as HTMLInputElement).value }))
+                }
+                required
+              />
+            </FormField>
+            <FormField label="Type">
+              <Select
+                value={form.vehicleType ?? 'buy'}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    vehicleType: (e.target as HTMLSelectElement).value as 'buy' | 'sell',
+                  }))
+                }
+              >
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </Select>
+            </FormField>
+            <FormField label="Capacity">
+              <Input
+                type="number"
+                placeholder="Capacity"
+                value={form.capacity ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    capacity: Number((e.target as HTMLInputElement).value) || undefined,
+                  }))
                 }
               />
-              Active
-            </label>
-          </FormField>
-          <div className="flex gap-2">
-            <Button type="submit" loading={saving} disabled={saving}>
-              {editingId ? 'Update' : 'Create'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onResetForm}>
-              Reset
-            </Button>
-          </div>
-        </form>
+            </FormField>
+            <FormField label="Driver Name">
+              <Input
+                placeholder="Driver Name"
+                value={form.driverName ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, driverName: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </FormField>
+            <FormField label="Driver Phone">
+              <Input
+                placeholder="Driver Phone"
+                value={form.driverPhone ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, driverPhone: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </FormField>
+            <FormField label="Tare Weight">
+              <Input
+                type="number"
+                placeholder="Tare Weight"
+                value={form.tareWeight ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    tareWeight: Number((e.target as HTMLInputElement).value) || undefined,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="Active">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.isActive ?? true}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, isActive: (e.target as HTMLInputElement).checked }))
+                  }
+                />
+                Active
+              </label>
+            </FormField>
+            <div className="flex gap-2">
+              <Button type="submit" loading={saving} disabled={saving}>
+                {editingId ? 'Update' : 'Create'}
+              </Button>
+              <Button type="button" variant="outline" onClick={onResetForm}>
+                Reset
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </div>
       <ConfirmDialog
         open={confirm.open}

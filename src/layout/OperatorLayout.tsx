@@ -36,14 +36,14 @@ const OperatorLayout = () => {
   return (
     <div className="min-h-screen flex">
       {/* Desktop sidebar */}
-      <aside className="w-64 bg-white border-r p-4 space-y-3 hidden sm:block">
+      <aside className="w-64 bg-white border-r p-4 space-y-3 hidden lg:block sticky top-0 h-screen">
         <h2 className="font-semibold text-lg">Operator</h2>
         <Nav />
       </aside>
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="sm:hidden fixed inset-0 z-50">
+        <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <div className="absolute inset-y-0 left-0 w-72 bg-white p-4 border-r space-y-3">
             <h2 className="font-semibold text-lg">Operator</h2>

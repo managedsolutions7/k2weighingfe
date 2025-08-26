@@ -12,7 +12,7 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
-import { getEntries, reviewEntry, type Entry } from '@/api/entries';
+import { getEntries, type Entry } from '@/api/entries';
 import { useAppSelector } from '@/store';
 import { useScopedParams } from '@/hooks/useScopedApi';
 import Button from '@/components/ui/Button';
@@ -193,7 +193,6 @@ export default SupervisorDashboard;
 const PendingReviewList = ({ plantId }: { plantId: string }) => {
   const [items, setItems] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const { withScope } = useScopedParams();
 
   const fetchPending = async () => {
@@ -211,16 +210,6 @@ const PendingReviewList = ({ plantId }: { plantId: string }) => {
     void fetchPending();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plantId]);
-
-  const onReview = async (id: string) => {
-    try {
-      setReviewingId(id);
-      await reviewEntry(id, { isReviewed: true });
-      await fetchPending();
-    } finally {
-      setReviewingId(null);
-    }
-  };
 
   return (
     <div className="space-y-2">
@@ -240,14 +229,6 @@ const PendingReviewList = ({ plantId }: { plantId: string }) => {
               </span>
               <span>Entry Wt: {e.entryWeight ?? '-'}</span>
             </div>
-            <Button
-              size="sm"
-              onClick={() => onReview(e._id)}
-              loading={reviewingId === e._id}
-              disabled={reviewingId === e._id || Boolean(e.varianceFlag)}
-            >
-              Mark Reviewed
-            </Button>
           </div>
         ))}
     </div>
