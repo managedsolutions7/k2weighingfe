@@ -72,6 +72,10 @@ const VehiclesPage = () => {
 
   const columns: Column<Vehicle>[] = useMemo(
     () => [
+      {
+        key: 'vehicleCode',
+        header: 'Vehicle Code',
+      },
       { key: 'vehicleNumber', header: 'Vehicle No.' },
       { key: 'vehicleType', header: 'Type' },
       { key: 'capacity', header: 'Capacity' },

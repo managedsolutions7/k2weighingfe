@@ -322,6 +322,10 @@ const EntriesPage = () => {
         return vehicleOptions.find((o) => o.value === value)?.label ?? value;
       },
     },
+    {
+      key: 'vehicleCode',
+      header: 'Vehicle Code',
+    },
     { key: 'entryNumber', header: 'Entry No' },
     { key: 'driverName', header: "Driver's Name" },
     { key: 'driverPhone', header: "Driver's Phone" },

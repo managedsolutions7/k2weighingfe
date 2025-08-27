@@ -146,7 +146,7 @@ const ReportCharts = ({ charts, className = '' }: ReportChartsProps) => {
           paddingAngle={2}
           dataKey={config.yAxis || 'value'}
         >
-          {config.data.map((entry, index) => (
+          {config.data.map((_, index) => (
             <Cell
               key={`cell-${index}`}
               fill={config.colors?.[index] || defaultColors[index % defaultColors.length]}

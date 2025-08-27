@@ -130,7 +130,7 @@ const ReportPagination = ({
                 <span className="px-3 py-1 text-sm text-gray-500">...</span>
               ) : (
                 <Button
-                  variant={currentPage === page ? 'default' : 'outline'}
+                  variant={currentPage === page ? 'primary' : 'outline'}
                   size="sm"
                   onClick={() => onPageChange(page as number)}
                   className="px-3 py-1 min-w-[2.5rem]"

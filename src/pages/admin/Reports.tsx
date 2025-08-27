@@ -553,7 +553,7 @@ const Reports = () => {
                   key: 'vendor.name',
                   label: 'Vendor',
                   sortable: true,
-                  render: (value, row) => {
+                  render: (_value, row) => {
                     const vendor = row.vendor as Record<string, unknown>;
                     return vendor?.name ? String(vendor.name) : '-';
                   },

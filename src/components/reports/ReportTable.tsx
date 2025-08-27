@@ -171,7 +171,7 @@ const ReportTable = ({
     }
 
     if (typeof value === 'boolean') {
-      return <Badge variant={value ? 'success' : 'secondary'}>{value ? 'Yes' : 'No'}</Badge>;
+      return <Badge variant={value ? 'success' : 'default'}>{value ? 'Yes' : 'No'}</Badge>;
     }
 
     if (value instanceof Date) {
@@ -290,7 +290,7 @@ const ReportTable = ({
                     placeholder={`Filter ${column.label}...`}
                     value={filters[column.key] || ''}
                     onChange={(e) => handleFilterChange(column.key, e.target.value)}
-                    size="sm"
+                    className="h-8"
                   />
                 </div>
               ))}

@@ -47,6 +47,22 @@ const AsyncSelect = ({
     if (open && !disabled) void run();
   }, [debounced, loadOptions, open, disabled]);
 
+  // Load initial options when value is provided (for editing)
+  useEffect(() => {
+    const loadInitialOptions = async () => {
+      if (value && !open && options.length === 0) {
+        setLoading(true);
+        try {
+          const opts = await loadOptions('');
+          setOptions(opts);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    void loadInitialOptions();
+  }, [value, open, options.length, loadOptions]);
+
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!inputRef.current) return;

@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Truck,
   User,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -23,6 +24,7 @@ const AdminLayout = () => {
     { to: '/admin/materials', label: 'Materials', icon: Factory },
     { to: '/admin/invoices', label: 'Invoices', icon: FileText },
     { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
+    { to: '/admin/users', label: 'Users', icon: Users },
     { to: '/admin/profile', label: 'Profile', icon: User },
   ];
 

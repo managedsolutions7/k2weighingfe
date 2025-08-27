@@ -56,3 +56,68 @@ export const changePassword = async (payload: { currentPassword: string; newPass
     api.post('/api/auth/change-password', payload),
   );
 };
+
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  name: string;
+  empId: string;
+  role: 'admin' | 'supervisor' | 'operator';
+  plantId?: string;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  message: string;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+    role: 'admin' | 'supervisor' | 'operator';
+    empId: string;
+    plantId?: string;
+  };
+}
+
+export const registerUser = async (payload: RegisterRequest) => {
+  return unwrap<RegisterResponse>(api.post('/api/auth/register', payload));
+};
+
+export interface User {
+  _id: string;
+  username: string;
+  name: string;
+  role: 'admin' | 'supervisor' | 'operator';
+  empId: string;
+  plantId?: {
+    _id: string;
+    name: string;
+  };
+  plant?: {
+    _id: string;
+    name: string;
+    code: string;
+  };
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getUsers = async () => {
+  return unwrap<User[]>(api.get('/api/auth/users'));
+};
+
+export const updateUser = async (
+  id: string,
+  payload: {
+    role?: 'admin' | 'supervisor' | 'operator';
+    plantId?: string | null;
+    isActive?: boolean;
+  },
+) => {
+  return unwrap<{
+    success: boolean;
+    data: { id: string; role: string; plantId?: string; isActive: boolean };
+    message: string;
+  }>(api.patch(`/api/auth/users/${id}`, payload));
+};

@@ -38,37 +38,36 @@ export const useEnhancedDashboard = () => {
         };
 
         const response = await getEnhancedAdminDashboard(requestParams);
-        setData(
-          response || {
-            totals: { totalEntries: 0, totalQuantity: 0, totalAmount: 0, averageRate: 0 },
-            byType: {
-              purchase: { entries: 0, quantity: 0, amount: 0 },
-              sale: { entries: 0, quantity: 0, amount: 0 },
-            },
-            quality: {
-              totalMoistureWeight: 0,
-              totalDustWeight: 0,
-              averageMoisturePercentage: 0,
-              averageDustPercentage: 0,
-              moistureDeductionPercentage: 0,
-              dustDeductionPercentage: 0,
-            },
-            review: {
-              reviewedEntries: 0,
-              pendingReview: 0,
-              reviewRate: 0,
-              flaggedEntries: 0,
-              varianceFlaggedEntries: 0,
-              manualWeightEntries: 0,
-              flagRate: 0,
-            },
-            breakdowns: { materials: [], palettes: [] },
-            topVendors: [],
-            recentEntries: [],
-            recentInvoices: [],
-            counts: { entries: 0, invoices: 0, vendors: 0, plants: 0 },
+        const safeData: EnhancedDashboardData = (response as EnhancedDashboardData) || {
+          totals: { totalEntries: 0, totalQuantity: 0, totalAmount: 0, averageRate: 0 },
+          byType: {
+            purchase: { entries: 0, quantity: 0, amount: 0 },
+            sale: { entries: 0, quantity: 0, amount: 0 },
           },
-        );
+          quality: {
+            totalMoistureWeight: 0,
+            totalDustWeight: 0,
+            averageMoisturePercentage: 0,
+            averageDustPercentage: 0,
+            moistureDeductionPercentage: 0,
+            dustDeductionPercentage: 0,
+          },
+          review: {
+            reviewedEntries: 0,
+            pendingReview: 0,
+            reviewRate: 0,
+            flaggedEntries: 0,
+            varianceFlaggedEntries: 0,
+            manualWeightEntries: 0,
+            flagRate: 0,
+          },
+          breakdowns: { materials: [], palettes: [] },
+          topVendors: [],
+          recentEntries: [],
+          recentInvoices: [],
+          counts: { entries: 0, invoices: 0, vendors: 0, plants: 0 },
+        };
+        setData(safeData);
       } catch (err) {
         console.error('Failed to load dashboard:', err);
         const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard data';

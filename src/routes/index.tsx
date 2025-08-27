@@ -15,6 +15,7 @@ import VehiclesPage from '@/pages/admin/Vehicles';
 import InvoicesPage from '@/pages/admin/Invoices';
 import MaterialsPage from '@/pages/admin/Materials';
 import ReportsPage from '@/pages/admin/Reports';
+import UsersPage from '@/pages/admin/Users';
 import EntriesPage from '@/pages/operator/Entries';
 
 const AppRoutes = () => (
@@ -30,6 +31,7 @@ const AppRoutes = () => (
           <Route path="/admin/materials" element={<MaterialsPage />} />
           <Route path="/admin/invoices" element={<InvoicesPage />} />
           <Route path="/admin/reports" element={<ReportsPage />} />
+          <Route path="/admin/users" element={<UsersPage />} />
         </Route>
       </Route>
 

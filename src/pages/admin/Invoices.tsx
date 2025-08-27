@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   createInvoice,
-  deleteInvoice,
   getInvoices,
   type Invoice,
   updateInvoice,
@@ -10,7 +9,6 @@ import {
   getInvoicePdf,
 } from '@/api/invoices';
 import Spinner from '@/components/common/Spinner';
-import { ConfirmDialog } from '@/components/common/Modal';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import PageHeader from '@/components/ui/PageHeader';
 import Card from '@/components/ui/Card';
@@ -18,7 +16,7 @@ import Button from '@/components/ui/Button';
 import FormField from '@/components/ui/FormField';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import Badge from '@/components/ui/Badge';
+
 import Skeleton from '@/components/ui/Skeleton';
 import { usePlantsOptions, useVendorsOptions } from '@/hooks/useOptions';
 import { getMaterials } from '@/api/materials';
@@ -29,7 +27,8 @@ import type { Option } from '@/hooks/useOptions';
 import FiltersBar from '@/components/common/FiltersBar';
 import Pagination from '@/components/common/Pagination';
 import { toastError, toastSuccess } from '@/utils/toast';
-import { Download, Edit2, Trash2 } from 'lucide-react';
+import { Download, Edit2 } from 'lucide-react';
+import { Modal } from '@/components/common/Modal';
 
 const emptyForm: Partial<Invoice> = {
   vendor: '',
@@ -74,7 +73,7 @@ const InvoicesPage = () => {
     loading: boolean;
   }>({ entries: [], total: 0, loading: false });
   // const [selectedEntries, setSelectedEntries] = useState<Entry[]>([]);
-  const [confirm, setConfirm] = useState<{ open: boolean; id?: string }>({ open: false });
+
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState<{
     vendor?: string;
@@ -93,7 +92,7 @@ const InvoicesPage = () => {
   const loadVendorOptions = async (q: string): Promise<Option[]> => {
     return vendorOptions.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
   };
-
+  const [modalOpen, setModalOpen] = useState(false);
   const fetchInvoices = async () => {
     try {
       setLoading(true);
@@ -198,6 +197,11 @@ const InvoicesPage = () => {
 
   const columns: Column<Invoice>[] = [
     {
+      key: 'invoiceNumber',
+      header: 'Invoice Number',
+      render: (r) => r.invoiceNumber || '-',
+    },
+    {
       key: 'vendor',
       header: 'Vendor',
       render: (r) => (typeof r.vendor === 'string' ? r.vendor : (r.vendor?.name ?? '')),
@@ -208,18 +212,24 @@ const InvoicesPage = () => {
       render: (r) => (typeof r.plant === 'string' ? r.plant : (r.plant?.name ?? '')),
     },
     {
-      key: 'status',
-      header: 'Status',
-      render: (r) => (
-        <Badge
-          variant={r.status === 'paid' ? 'success' : r.status === 'draft' ? 'warning' : 'default'}
-        >
-          {r.status ?? ''}
-        </Badge>
-      ),
+      key: 'invoiceType',
+      header: 'Invoice Type',
+      render: () => {
+        // Determine invoice type based on entries or other logic
+        // For now, we'll show a placeholder - you may need to add this field to your Invoice interface
+        return 'Purchase'; // or 'Sale' based on your logic
+      },
     },
-    { key: 'invoiceDate', header: 'Invoice Date' },
-    { key: 'dueDate', header: 'Due Date' },
+    {
+      key: 'totalAmount',
+      header: 'Total Amount',
+      render: (r) => (r.totalAmount ? `₹${r.totalAmount.toLocaleString()}` : '-'),
+    },
+    {
+      key: 'invoiceDate',
+      header: 'Invoice Date',
+      render: (r) => (r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString('en-GB') : '-'),
+    },
     {
       key: 'actions',
       header: 'Actions',
@@ -227,9 +237,6 @@ const InvoicesPage = () => {
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => onEdit(r)}>
             <Edit2 className="w-4 h-4" /> Edit
-          </Button>
-          <Button type="button" variant="outline" onClick={() => onDelete(r._id)}>
-            <Trash2 className="w-4 h-4" /> Delete
           </Button>
           <Button type="button" variant="outline" onClick={() => onDownload(r._id)}>
             <Download className="w-4 h-4" /> Download
@@ -240,14 +247,43 @@ const InvoicesPage = () => {
   ];
 
   const onEdit = (invoice: Invoice) => {
+    setModalOpen(true);
     // Normalize nested objects to string IDs for form controls
     setEditingId(invoice._id);
+
+    // Set form data immediately
     setForm({
       ...invoice,
       vendor: typeof invoice.vendor === 'string' ? invoice.vendor : (invoice.vendor?._id ?? ''),
       plant: typeof invoice.plant === 'string' ? invoice.plant : (invoice.plant?._id ?? ''),
       entries: (invoice.entries ?? []).map((e) => (typeof e === 'string' ? e : e._id)),
     });
+
+    // Reset range dates for editing (these are only used for creating new invoices from date ranges)
+    setRangeStart('');
+    setRangeEnd('');
+
+    // Reset material rates and palette rates for editing
+    setMaterialRates({});
+    setPaletteRates({ loose: 0, packed: 0 });
+
+    // Determine invoice type asynchronously
+    if (invoice.entries && invoice.entries.length > 0) {
+      const firstEntryId =
+        typeof invoice.entries[0] === 'string' ? invoice.entries[0] : invoice.entries[0]._id;
+
+      getEntryById(firstEntryId)
+        .then((firstEntry) => {
+          setInvoiceType(firstEntry.entryType);
+        })
+        .catch((error) => {
+          console.warn('Could not determine invoice type from entries:', error);
+          // Default to purchase if we can't determine
+          setInvoiceType('purchase');
+        });
+    } else {
+      setInvoiceType('purchase');
+    }
   };
 
   // Derive material ids from entries text and fetch names
@@ -305,21 +341,6 @@ const InvoicesPage = () => {
     void loadMaterialsFromEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(form.entries ?? [])]);
-
-  const onDelete = (id: string) => setConfirm({ open: true, id });
-  const onConfirmDelete = async () => {
-    try {
-      if (confirm.id) {
-        await deleteInvoice(confirm.id);
-        toastSuccess('Invoice deleted');
-        void fetchInvoices();
-      }
-    } catch {
-      toastError('Failed to delete invoice');
-    } finally {
-      setConfirm({ open: false });
-    }
-  };
 
   const onDownload = async (id: string) => {
     try {
@@ -383,12 +404,18 @@ const InvoicesPage = () => {
       toastError('Failed to save invoice');
     } finally {
       setSaving(false);
+      setModalOpen(false);
     }
   };
 
   const onResetForm = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setInvoiceType('purchase');
+    setRangeStart('');
+    setRangeEnd('');
+    setMaterialRates({});
+    setPaletteRates({ loose: 0, packed: 0 });
   };
 
   const onResetFilters = () => setFilters({});
@@ -460,8 +487,20 @@ const InvoicesPage = () => {
             </Select>
           </FormField>
         </FiltersBar>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              onResetForm();
+              setModalOpen(true);
+            }}
+          >
+            Create Invoice
+          </Button>
+        </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-1 gap-6">
           <Card>
             {loading && invoices.length === 0 ? (
               <Skeleton className="h-48" />
@@ -473,168 +512,198 @@ const InvoicesPage = () => {
             )}
             {loading && invoices.length > 0 && <Spinner />}
           </Card>
-          <form onSubmit={onSubmit} className="card p-4 space-y-3">
-            <h2 className="font-medium">{editingId ? 'Edit Invoice' : 'Create Invoice'}</h2>
-            <FormField label="Plant">
-              <AsyncSelect
-                value={plantIdValue ?? ''}
-                onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
-                loadOptions={loadPlantOptions}
-                placeholder="Search plant…"
-                ariaLabel="Plant"
-              />
-            </FormField>
-            {(() => {
-              const vendorIdValue =
-                typeof form.vendor === 'string'
-                  ? form.vendor
-                  : ((form.vendor?._id as string | undefined) ?? '');
-              return (
-                <FormField label="Vendor">
-                  <AsyncSelect
-                    value={vendorIdValue}
-                    onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
-                    loadOptions={loadVendorOptions}
-                    placeholder="Search vendor…"
-                    ariaLabel="Vendor"
-                  />
-                </FormField>
-              );
-            })()}
-            <FormField label="Invoice Type">
-              <Select
-                value={invoiceType}
-                onChange={(e) =>
-                  setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
-                }
-              >
-                <option value="purchase">Purchase</option>
-                <option value="sale">Sale</option>
-              </Select>
-            </FormField>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <FormField label="Start Date">
-                <Input
-                  type="date"
-                  value={rangeStart}
-                  onChange={(e) => setRangeStart((e.target as HTMLInputElement).value)}
+          <Modal
+            open={modalOpen}
+            onClose={() => {
+              setModalOpen(false);
+              // Only reset form when not editing
+              if (!editingId) {
+                onResetForm();
+              }
+            }}
+            title={editingId ? 'Edit Invoice' : 'Create Invoice'}
+          >
+            <form onSubmit={onSubmit} className="card p-4 space-y-3">
+              <h2 className="font-medium">{editingId ? 'Edit Invoice' : 'Create Invoice'}</h2>
+              <FormField label="Plant">
+                <AsyncSelect
+                  value={plantIdValue ?? ''}
+                  onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
+                  loadOptions={loadPlantOptions}
+                  placeholder="Search plant…"
+                  ariaLabel="Plant"
                 />
               </FormField>
-              <FormField label="End Date">
-                <Input
-                  type="date"
-                  value={rangeEnd}
-                  onChange={(e) => setRangeEnd((e.target as HTMLInputElement).value)}
-                />
+              {(() => {
+                const vendorIdValue =
+                  typeof form.vendor === 'string'
+                    ? form.vendor
+                    : ((form.vendor?._id as string | undefined) ?? '');
+                return (
+                  <FormField label="Vendor">
+                    <AsyncSelect
+                      value={vendorIdValue}
+                      onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
+                      loadOptions={loadVendorOptions}
+                      placeholder="Search vendor…"
+                      ariaLabel="Vendor"
+                    />
+                  </FormField>
+                );
+              })()}
+              <FormField label="Invoice Type">
+                <Select
+                  value={invoiceType}
+                  onChange={(e) =>
+                    setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
+                  }
+                >
+                  <option value="purchase">Purchase</option>
+                  <option value="sale">Sale</option>
+                </Select>
               </FormField>
-            </div>
-            {/* Invoice Date removed */}
-            {invoiceType === 'purchase' && (
-              <Card>
-                <h3 className="font-medium mb-2">Material Rates</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-end gap-2">
-                    <FormField label="Add material">
-                      <Select
-                        value=""
-                        onChange={(e) => {
-                          const id = (e.target as HTMLSelectElement).value;
-                          if (!id) return;
-                          setMaterialRates((prev) => ({ ...prev, [id]: prev[id] ?? 0 }));
-                          setMaterialNames((prev) => ({
-                            ...prev,
-                            [id]: materialsList.find((m) => m._id === id)?.name ?? id,
-                          }));
-                        }}
-                      >
-                        <option value="">Select material…</option>
-                        {materialsList
-                          .filter((m) => materialRates[m._id] == null)
-                          .map((m) => (
-                            <option key={m._id} value={m._id}>
-                              {m.name}
-                            </option>
-                          ))}
-                      </Select>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {editingId ? (
+                  // Show invoice date for editing
+                  <FormField label="Invoice Date">
+                    <Input
+                      type="date"
+                      value={
+                        form.invoiceDate
+                          ? new Date(form.invoiceDate).toISOString().split('T')[0]
+                          : ''
+                      }
+                      onChange={(e) => setForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+                    />
+                  </FormField>
+                ) : (
+                  // Show date range for creating new invoices
+                  <>
+                    <FormField label="Start Date">
+                      <Input
+                        type="date"
+                        value={rangeStart}
+                        onChange={(e) => setRangeStart((e.target as HTMLInputElement).value)}
+                      />
                     </FormField>
-                  </div>
-                  {Object.keys(materialRates).length === 0 && (
-                    <div className="text-xs text-gray-500">Add materials to specify rates.</div>
-                  )}
-                  {Object.entries(materialRates).map(([matId, rate]) => (
-                    <div key={matId} className="flex items-center gap-2">
-                      <div className="w-40 truncate" title={materialNames[matId] ?? matId}>
-                        {materialNames[matId] ?? matId}
+                    <FormField label="End Date">
+                      <Input
+                        type="date"
+                        value={rangeEnd}
+                        onChange={(e) => setRangeEnd((e.target as HTMLInputElement).value)}
+                      />
+                    </FormField>
+                  </>
+                )}
+              </div>
+              {/* Invoice Date removed */}
+              {invoiceType === 'purchase' && (
+                <Card>
+                  <h3 className="font-medium mb-2">Material Rates</h3>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-end gap-2">
+                      <FormField label="Add material">
+                        <Select
+                          value=""
+                          onChange={(e) => {
+                            const id = (e.target as HTMLSelectElement).value;
+                            if (!id) return;
+                            setMaterialRates((prev) => ({ ...prev, [id]: prev[id] ?? 0 }));
+                            setMaterialNames((prev) => ({
+                              ...prev,
+                              [id]: materialsList.find((m) => m._id === id)?.name ?? id,
+                            }));
+                          }}
+                        >
+                          <option value="">Select material…</option>
+                          {materialsList
+                            .filter((m) => materialRates[m._id] == null)
+                            .map((m) => (
+                              <option key={m._id} value={m._id}>
+                                {m.name}
+                              </option>
+                            ))}
+                        </Select>
+                      </FormField>
+                    </div>
+                    {Object.keys(materialRates).length === 0 && (
+                      <div className="text-xs text-gray-500">Add materials to specify rates.</div>
+                    )}
+                    {Object.entries(materialRates).map(([matId, rate]) => (
+                      <div key={matId} className="flex items-center gap-2">
+                        <div className="w-40 truncate" title={materialNames[matId] ?? matId}>
+                          {materialNames[matId] ?? matId}
+                        </div>
+                        <Input
+                          type="number"
+                          value={rate}
+                          onChange={(e) =>
+                            setMaterialRates((prev) => ({
+                              ...prev,
+                              [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                            }))
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setMaterialRates((prev) => {
+                              const next = { ...prev } as Record<string, number>;
+                              delete next[matId];
+                              return next;
+                            })
+                          }
+                        >
+                          Remove
+                        </Button>
                       </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+              {invoiceType === 'sale' && (
+                <Card>
+                  <h3 className="font-medium mb-2">Palette Rates</h3>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <FormField label="Loose (₹/kg)">
                       <Input
                         type="number"
-                        value={rate}
+                        value={paletteRates.loose}
                         onChange={(e) =>
-                          setMaterialRates((prev) => ({
-                            ...prev,
-                            [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                          setPaletteRates((p) => ({
+                            ...p,
+                            loose: Number((e.target as HTMLInputElement).value) || 0,
                           }))
                         }
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          setMaterialRates((prev) => {
-                            const next = { ...prev } as Record<string, number>;
-                            delete next[matId];
-                            return next;
-                          })
+                    </FormField>
+                    <FormField label="Packed (₹/kg)">
+                      <Input
+                        type="number"
+                        value={paletteRates.packed}
+                        onChange={(e) =>
+                          setPaletteRates((p) => ({
+                            ...p,
+                            packed: Number((e.target as HTMLInputElement).value) || 0,
+                          }))
                         }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-            {invoiceType === 'sale' && (
-              <Card>
-                <h3 className="font-medium mb-2">Palette Rates</h3>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <FormField label="Loose (₹/kg)">
-                    <Input
-                      type="number"
-                      value={paletteRates.loose}
-                      onChange={(e) =>
-                        setPaletteRates((p) => ({
-                          ...p,
-                          loose: Number((e.target as HTMLInputElement).value) || 0,
-                        }))
-                      }
-                    />
-                  </FormField>
-                  <FormField label="Packed (₹/kg)">
-                    <Input
-                      type="number"
-                      value={paletteRates.packed}
-                      onChange={(e) =>
-                        setPaletteRates((p) => ({
-                          ...p,
-                          packed: Number((e.target as HTMLInputElement).value) || 0,
-                        }))
-                      }
-                    />
-                  </FormField>
-                </div>
-              </Card>
-            )}
-            {/* Due Date and Status removed */}
-            <div className="flex gap-2">
-              <Button type="submit" loading={saving} disabled={saving}>
-                {editingId ? 'Update' : 'Create'}
-              </Button>
-              <Button type="button" variant="outline" onClick={onResetForm}>
-                Reset
-              </Button>
-            </div>
-          </form>
+                      />
+                    </FormField>
+                  </div>
+                </Card>
+              )}
+              {/* Due Date and Status removed */}
+              <div className="flex gap-2">
+                <Button type="submit" loading={saving} disabled={saving}>
+                  {editingId ? 'Update' : 'Create'}
+                </Button>
+                <Button type="button" variant="outline" onClick={onResetForm}>
+                  Reset
+                </Button>
+              </div>
+            </form>
+          </Modal>
         </div>
         <Card>
           <h3 className="font-medium mb-2">Available Entries ({available.total})</h3>
@@ -690,13 +759,6 @@ const InvoicesPage = () => {
           )}
         </Card>
       </div>
-      <ConfirmDialog
-        open={confirm.open}
-        title="Delete Invoice"
-        message="This action cannot be undone. Do you want to proceed?"
-        onCancel={() => setConfirm({ open: false })}
-        onConfirm={onConfirmDelete}
-      />
     </>
   );
 };
