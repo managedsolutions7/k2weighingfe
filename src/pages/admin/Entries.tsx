@@ -202,9 +202,7 @@ const AdminEntries = () => {
       key: 'flagged',
       header: 'Flagged',
       render: (r) => (
-        <Badge variant={r.flagged ? 'danger' : 'secondary'}>
-          {r.flagged ? 'Flagged' : 'Normal'}
-        </Badge>
+        <Badge variant={r.flagged ? 'danger' : 'default'}>{r.flagged ? 'Flagged' : 'Normal'}</Badge>
       ),
     },
     {
@@ -397,12 +395,7 @@ const AdminEntries = () => {
       </div>
 
       {/* Entry Details Modal */}
-      <Modal
-        open={detailModalOpen}
-        onClose={() => setDetailModalOpen(false)}
-        title="Entry Details"
-        size="lg"
-      >
+      <Modal open={detailModalOpen} onClose={() => setDetailModalOpen(false)} title="Entry Details">
         {selectedEntry && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -448,10 +441,6 @@ const AdminEntries = () => {
                       ? selectedEntry.vehicle?.vehicleNumber || selectedEntry.vehicle?._id
                       : vehicleOptions.find((o) => o.value === selectedEntry.vehicle)?.label ||
                         selectedEntry.vehicle}
-                  </div>
-                  <div>
-                    <span className="font-medium">Vehicle Code:</span>{' '}
-                    {selectedEntry.vehicleCode || 'N/A'}
                   </div>
                 </div>
               </div>
@@ -553,7 +542,7 @@ const AdminEntries = () => {
                   </div>
                   <div>
                     <span className="font-medium">Flagged:</span>{' '}
-                    <Badge variant={selectedEntry.flagged ? 'danger' : 'secondary'}>
+                    <Badge variant={selectedEntry.flagged ? 'danger' : 'default'}>
                       {selectedEntry.flagged ? 'Yes' : 'No'}
                     </Badge>
                   </div>
