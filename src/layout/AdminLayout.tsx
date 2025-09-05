@@ -9,6 +9,7 @@ import {
   Truck,
   User,
   Users,
+  ClipboardList,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -18,6 +19,7 @@ const AdminLayout = () => {
 
   const links = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/admin/entries', label: 'Entries', icon: ClipboardList },
     { to: '/admin/plants', label: 'Plants', icon: Factory },
     { to: '/admin/vendors', label: 'Vendors', icon: Building2 },
     { to: '/admin/vehicles', label: 'Vehicles', icon: Truck },

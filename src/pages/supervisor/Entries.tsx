@@ -237,7 +237,21 @@ const SupervisorEntries = () => {
                 size="sm"
                 onClick={() => onReview(r._id)}
                 loading={reviewingId === r._id}
-                disabled={reviewingId === r._id || Boolean(r.flagged) || Boolean(r.varianceFlag)}
+                disabled={
+                  reviewingId === r._id ||
+                  Boolean(r.flagged) ||
+                  Boolean(r.varianceFlag) ||
+                  !(r.exitWeight && r.exitWeight > 0)
+                }
+                title={
+                  !(r.exitWeight && r.exitWeight > 0)
+                    ? 'Exit weight must be recorded before review'
+                    : r.flagged
+                      ? 'Cannot review flagged entry'
+                      : r.varianceFlag
+                        ? 'Cannot review entry with variance issues'
+                        : 'Mark as reviewed'
+                }
               >
                 Mark Reviewed
               </Button>

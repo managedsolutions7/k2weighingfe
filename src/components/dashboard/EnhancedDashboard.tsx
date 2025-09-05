@@ -68,7 +68,12 @@ const EnhancedDashboard = ({ className = '' }: EnhancedDashboardProps) => {
   }
 
   return (
-    <section id="main" aria-busy={loading} aria-live="polite" className={`space-y-6 ${className}`}>
+    <section
+      id="main"
+      aria-busy={loading}
+      aria-live="polite"
+      className={`space-y-6 relative ${className}`}
+    >
       {/* Header Section */}
       <PageHeader
         title="Enhanced Dashboard"
@@ -105,8 +110,8 @@ const EnhancedDashboard = ({ className = '' }: EnhancedDashboardProps) => {
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 text-center">
+        <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
+          <div className="bg-white rounded-lg p-6 text-center shadow-lg border">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <p className="text-gray-600">Updating dashboard...</p>
           </div>

@@ -17,6 +17,7 @@ import MaterialsPage from '@/pages/admin/Materials';
 import ReportsPage from '@/pages/admin/Reports';
 import UsersPage from '@/pages/admin/Users';
 import EntriesPage from '@/pages/operator/Entries';
+import AdminEntries from '@/pages/admin/Entries';
 
 const AppRoutes = () => (
   <Routes>
@@ -24,6 +25,7 @@ const AppRoutes = () => (
       <Route element={<RoleRoute allowed={['admin']} />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/entries" element={<AdminEntries />} />
           <Route path="/admin/profile" element={<Profile />} />
           <Route path="/admin/plants" element={<PlantsPage />} />
           <Route path="/admin/vendors" element={<VendorsPage />} />

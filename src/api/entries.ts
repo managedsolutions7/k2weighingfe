@@ -40,6 +40,9 @@ export interface Entry {
   reviewedBy?: string;
   reviewedAt?: string;
   reviewNotes?: string;
+  // Initial weights (admin only)
+  initialEntryWeight?: number;
+  initialExitWeight?: number;
 }
 
 export const createEntry = async (data: Partial<Entry>) =>
