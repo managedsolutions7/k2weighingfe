@@ -78,7 +78,7 @@ const VehiclesPage = () => {
       },
       { key: 'vehicleNumber', header: 'Vehicle No.' },
       { key: 'vehicleType', header: 'Type' },
-      { key: 'capacity', header: 'Capacity' },
+      { key: 'tareWeight', header: 'Tare Weight' },
       { key: 'driverName', header: 'Driver' },
       { key: 'driverPhone', header: 'Phone' },
       {
