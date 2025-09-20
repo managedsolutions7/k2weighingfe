@@ -28,7 +28,7 @@ import FiltersBar from '@/components/common/FiltersBar';
 import Pagination from '@/components/common/Pagination';
 import { toastError, toastSuccess } from '@/utils/toast';
 import { Download, Edit2 } from 'lucide-react';
-import { Modal } from '@/components/common/Modal';
+// Modal removed in favor of inline builder layout
 
 const emptyForm: Partial<Invoice> = {
   vendor: '',
@@ -58,6 +58,11 @@ const InvoicesPage = () => {
     packed: 0,
   });
   const [materialsList, setMaterialsList] = useState<Array<{ _id: string; name: string }>>([]);
+  // GST state
+  const [gstApplicable, setGstApplicable] = useState<boolean>(false);
+  const [gstType, setGstType] = useState<'IGST' | 'CGST_SGST' | null>(null);
+  const [gstRate, setGstRate] = useState<number | null>(null);
+
   const [available, setAvailable] = useState<{
     entries: Array<{
       _id: string;
@@ -92,7 +97,7 @@ const InvoicesPage = () => {
   const loadVendorOptions = async (q: string): Promise<Option[]> => {
     return vendorOptions.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
   };
-  const [modalOpen, setModalOpen] = useState(false);
+  // Inline builder replaces modal
   const fetchInvoices = async () => {
     try {
       setLoading(true);
@@ -214,10 +219,8 @@ const InvoicesPage = () => {
     {
       key: 'invoiceType',
       header: 'Invoice Type',
-      render: () => {
-        // Determine invoice type based on entries or other logic
-        // For now, we'll show a placeholder - you may need to add this field to your Invoice interface
-        return 'Purchase'; // or 'Sale' based on your logic
+      render: (r) => {
+        return (r as { invoiceType?: 'purchase' | 'sale' }).invoiceType ?? 'purchase';
       },
     },
     {
@@ -247,7 +250,6 @@ const InvoicesPage = () => {
   ];
 
   const onEdit = (invoice: Invoice) => {
-    setModalOpen(true);
     // Normalize nested objects to string IDs for form controls
     setEditingId(invoice._id);
 
@@ -258,6 +260,15 @@ const InvoicesPage = () => {
       plant: typeof invoice.plant === 'string' ? invoice.plant : (invoice.plant?._id ?? ''),
       entries: (invoice.entries ?? []).map((e) => (typeof e === 'string' ? e : e._id)),
     });
+
+    // Load GST state from invoice
+    setGstApplicable(Boolean((invoice as { gstApplicable?: boolean }).gstApplicable));
+    setGstType((invoice as { gstType?: 'IGST' | 'CGST_SGST' | null }).gstType ?? null);
+    setGstRate(
+      (invoice as { gstRate?: number | null }).gstRate != null
+        ? ((invoice as { gstRate?: number | null }).gstRate as number)
+        : null,
+    );
 
     // Reset range dates for editing (these are only used for creating new invoices from date ranges)
     setRangeStart('');
@@ -364,7 +375,7 @@ const InvoicesPage = () => {
       setSaving(true);
       const isRangeFlow = Boolean(rangeStart && rangeEnd && form.vendor && form.plant);
       if (isRangeFlow) {
-        await generateInvoiceFromRange({
+        const rangePayload = {
           vendor: typeof form.vendor === 'string' ? form.vendor : (form.vendor?._id as string),
           plant: typeof form.plant === 'string' ? form.plant : (form.plant?._id as string),
           invoiceType,
@@ -377,7 +388,11 @@ const InvoicesPage = () => {
           paletteRates: invoiceType === 'sale' ? paletteRates : undefined,
           invoiceDate: undefined,
           dueDate: undefined,
-        });
+          gstApplicable: gstApplicable || false,
+          gstType: gstApplicable ? (gstType ?? 'CGST_SGST') : null,
+          gstRate: gstApplicable ? (gstRate ?? null) : null,
+        };
+        await generateInvoiceFromRange(rangePayload);
         toastSuccess('Invoice generated');
       } else {
         const payload = {
@@ -388,6 +403,9 @@ const InvoicesPage = () => {
           invoiceDate: form.invoiceDate,
           dueDate: form.dueDate,
           invoiceType,
+          gstApplicable: gstApplicable || false,
+          gstType: gstApplicable ? (gstType ?? 'CGST_SGST') : null,
+          gstRate: gstApplicable ? (gstRate ?? null) : null,
         };
         if (editingId) {
           await updateInvoice(editingId, payload);
@@ -404,7 +422,6 @@ const InvoicesPage = () => {
       toastError('Failed to save invoice');
     } finally {
       setSaving(false);
-      setModalOpen(false);
     }
   };
 
@@ -416,6 +433,9 @@ const InvoicesPage = () => {
     setRangeEnd('');
     setMaterialRates({});
     setPaletteRates({ loose: 0, packed: 0 });
+    setGstApplicable(false);
+    setGstType(null);
+    setGstRate(null);
   };
 
   const onResetFilters = () => setFilters({});
@@ -487,277 +507,346 @@ const InvoicesPage = () => {
             </Select>
           </FormField>
         </FiltersBar>
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="primary"
-            onClick={() => {
-              onResetForm();
-              setModalOpen(true);
-            }}
-          >
-            Create Invoice
-          </Button>
-        </div>
-
-        <div className="grid md:grid-cols-1 gap-6">
-          <Card>
-            {loading && invoices.length === 0 ? (
-              <Skeleton className="h-48" />
-            ) : (
-              <>
-                <DataTable<Invoice> columns={columns} data={invoices} keyField="_id" />
-                <Pagination page={page} total={total} pageSize={pageSize} onPageChange={setPage} />
-              </>
-            )}
-            {loading && invoices.length > 0 && <Spinner />}
-          </Card>
-          <Modal
-            open={modalOpen}
-            onClose={() => {
-              setModalOpen(false);
-              // Only reset form when not editing
-              if (!editingId) {
-                onResetForm();
-              }
-            }}
-            title={editingId ? 'Edit Invoice' : 'Create Invoice'}
-          >
-            <form onSubmit={onSubmit} className="card p-4 space-y-3">
-              <h2 className="font-medium">{editingId ? 'Edit Invoice' : 'Create Invoice'}</h2>
-              <FormField label="Plant">
-                <AsyncSelect
-                  value={plantIdValue ?? ''}
-                  onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
-                  loadOptions={loadPlantOptions}
-                  placeholder="Search plant…"
-                  ariaLabel="Plant"
-                />
-              </FormField>
-              {(() => {
-                const vendorIdValue =
-                  typeof form.vendor === 'string'
-                    ? form.vendor
-                    : ((form.vendor?._id as string | undefined) ?? '');
-                return (
-                  <FormField label="Vendor">
-                    <AsyncSelect
-                      value={vendorIdValue}
-                      onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
-                      loadOptions={loadVendorOptions}
-                      placeholder="Search vendor…"
-                      ariaLabel="Vendor"
-                    />
-                  </FormField>
-                );
-              })()}
-              <FormField label="Invoice Type">
-                <Select
-                  value={invoiceType}
-                  onChange={(e) =>
-                    setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
-                  }
-                >
-                  <option value="purchase">Purchase</option>
-                  <option value="sale">Sale</option>
-                </Select>
-              </FormField>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {editingId ? (
-                  // Show invoice date for editing
-                  <FormField label="Invoice Date">
-                    <Input
-                      type="date"
-                      value={
-                        form.invoiceDate
-                          ? new Date(form.invoiceDate).toISOString().split('T')[0]
-                          : ''
-                      }
-                      onChange={(e) => setForm((f) => ({ ...f, invoiceDate: e.target.value }))}
-                    />
-                  </FormField>
-                ) : (
-                  // Show date range for creating new invoices
-                  <>
-                    <FormField label="Start Date">
-                      <Input
-                        type="date"
-                        value={rangeStart}
-                        onChange={(e) => setRangeStart((e.target as HTMLInputElement).value)}
-                      />
-                    </FormField>
-                    <FormField label="End Date">
-                      <Input
-                        type="date"
-                        value={rangeEnd}
-                        onChange={(e) => setRangeEnd((e.target as HTMLInputElement).value)}
-                      />
-                    </FormField>
-                  </>
-                )}
+        <div className="grid lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-5">
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="font-medium text-base">
+                  {editingId ? 'Edit Invoice' : 'Create Invoice'}
+                </h2>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={onResetForm}>
+                    Reset
+                  </Button>
+                  <Button type="button" variant="primary" onClick={() => onResetForm()}>
+                    New
+                  </Button>
+                </div>
               </div>
-              {/* Invoice Date removed */}
-              {invoiceType === 'purchase' && (
-                <Card>
-                  <h3 className="font-medium mb-2">Material Rates</h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-end gap-2">
-                      <FormField label="Add material">
-                        <Select
-                          value=""
-                          onChange={(e) => {
-                            const id = (e.target as HTMLSelectElement).value;
-                            if (!id) return;
-                            setMaterialRates((prev) => ({ ...prev, [id]: prev[id] ?? 0 }));
-                            setMaterialNames((prev) => ({
-                              ...prev,
-                              [id]: materialsList.find((m) => m._id === id)?.name ?? id,
-                            }));
-                          }}
-                        >
-                          <option value="">Select material…</option>
-                          {materialsList
-                            .filter((m) => materialRates[m._id] == null)
-                            .map((m) => (
-                              <option key={m._id} value={m._id}>
-                                {m.name}
-                              </option>
-                            ))}
-                        </Select>
+              <form onSubmit={onSubmit} className="p-0 space-y-3 mt-3">
+                <h2 className="font-medium">{editingId ? 'Edit Invoice' : 'Create Invoice'}</h2>
+                <FormField label="Plant">
+                  <AsyncSelect
+                    value={plantIdValue ?? ''}
+                    onChange={(v) => setForm((f) => ({ ...f, plant: v }))}
+                    loadOptions={loadPlantOptions}
+                    placeholder="Search plant…"
+                    ariaLabel="Plant"
+                  />
+                </FormField>
+                {(() => {
+                  const vendorIdValue =
+                    typeof form.vendor === 'string'
+                      ? form.vendor
+                      : ((form.vendor?._id as string | undefined) ?? '');
+                  return (
+                    <FormField label="Vendor">
+                      <AsyncSelect
+                        value={vendorIdValue}
+                        onChange={(v) => setForm((f) => ({ ...f, vendor: v }))}
+                        loadOptions={loadVendorOptions}
+                        placeholder="Search vendor…"
+                        ariaLabel="Vendor"
+                      />
+                    </FormField>
+                  );
+                })()}
+                <FormField label="Invoice Type">
+                  <Select
+                    value={invoiceType}
+                    onChange={(e) =>
+                      setInvoiceType((e.target as HTMLSelectElement).value as 'purchase' | 'sale')
+                    }
+                  >
+                    <option value="purchase">Purchase</option>
+                    <option value="sale">Sale</option>
+                  </Select>
+                </FormField>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {editingId ? (
+                    // Show invoice date for editing
+                    <FormField label="Invoice Date">
+                      <Input
+                        type="date"
+                        value={
+                          form.invoiceDate
+                            ? new Date(form.invoiceDate).toISOString().split('T')[0]
+                            : ''
+                        }
+                        onChange={(e) => setForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+                      />
+                    </FormField>
+                  ) : (
+                    // Show date range for creating new invoices
+                    <>
+                      <FormField label="Start Date">
+                        <Input
+                          type="date"
+                          value={rangeStart}
+                          onChange={(e) => setRangeStart((e.target as HTMLInputElement).value)}
+                        />
                       </FormField>
-                    </div>
-                    {Object.keys(materialRates).length === 0 && (
-                      <div className="text-xs text-gray-500">Add materials to specify rates.</div>
-                    )}
-                    {Object.entries(materialRates).map(([matId, rate]) => (
-                      <div key={matId} className="flex items-center gap-2">
-                        <div className="w-40 truncate" title={materialNames[matId] ?? matId}>
-                          {materialNames[matId] ?? matId}
+                      <FormField label="End Date">
+                        <Input
+                          type="date"
+                          value={rangeEnd}
+                          onChange={(e) => setRangeEnd((e.target as HTMLInputElement).value)}
+                        />
+                      </FormField>
+                    </>
+                  )}
+                </div>
+                {/* GST Section */}
+                <Card>
+                  <h3 className="font-medium mb-2">GST</h3>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={gstApplicable}
+                        onChange={(e) => setGstApplicable((e.target as HTMLInputElement).checked)}
+                      />
+                      GST Applicable?
+                    </label>
+                    {gstApplicable && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1">
+                          <FormField label="GST Type">
+                            <Select
+                              value={gstType ?? 'CGST_SGST'}
+                              onChange={(e) =>
+                                setGstType(
+                                  ((e.target as HTMLSelectElement).value as 'IGST' | 'CGST_SGST') ??
+                                    null,
+                                )
+                              }
+                            >
+                              <option value="CGST_SGST">CGST + SGST</option>
+                              <option value="IGST">IGST</option>
+                            </Select>
+                          </FormField>
                         </div>
+                        <div className="grid md:grid-cols-2 sm:grid-cols-2 grid-cols-1 gap-4">
+                          <FormField label="GST Rate">
+                            <Select
+                              value={gstRate != null ? String(gstRate) : ''}
+                              onChange={(e) =>
+                                setGstRate(Number((e.target as HTMLSelectElement).value) || null)
+                              }
+                            >
+                              <option value="">Select rate…</option>
+                              <option value="5">5%</option>
+                              <option value="12">12%</option>
+                              <option value="18">18%</option>
+                              <option value="28">28%</option>
+                            </Select>
+                          </FormField>
+                          <FormField label="Custom Rate (%)">
+                            <Input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={gstRate ?? ''}
+                              onChange={(e) =>
+                                setGstRate(Number((e.target as HTMLInputElement).value) || null)
+                              }
+                              placeholder="e.g. 18"
+                            />
+                          </FormField>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+                {/* Invoice Date removed */}
+                {invoiceType === 'purchase' && (
+                  <Card>
+                    <h3 className="font-medium mb-2">Material Rates</h3>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-end gap-2">
+                        <FormField label="Add material">
+                          <Select
+                            value=""
+                            onChange={(e) => {
+                              const id = (e.target as HTMLSelectElement).value;
+                              if (!id) return;
+                              setMaterialRates((prev) => ({ ...prev, [id]: prev[id] ?? 0 }));
+                              setMaterialNames((prev) => ({
+                                ...prev,
+                                [id]: materialsList.find((m) => m._id === id)?.name ?? id,
+                              }));
+                            }}
+                          >
+                            <option value="">Select material…</option>
+                            {materialsList
+                              .filter((m) => materialRates[m._id] == null)
+                              .map((m) => (
+                                <option key={m._id} value={m._id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                          </Select>
+                        </FormField>
+                      </div>
+                      {Object.keys(materialRates).length === 0 && (
+                        <div className="text-xs text-gray-500">Add materials to specify rates.</div>
+                      )}
+                      {Object.entries(materialRates).map(([matId, rate]) => (
+                        <div key={matId} className="flex items-center gap-2">
+                          <div className="w-40 truncate" title={materialNames[matId] ?? matId}>
+                            {materialNames[matId] ?? matId}
+                          </div>
+                          <Input
+                            type="number"
+                            value={rate}
+                            onChange={(e) =>
+                              setMaterialRates((prev) => ({
+                                ...prev,
+                                [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                              }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setMaterialRates((prev) => {
+                                const next = { ...prev } as Record<string, number>;
+                                delete next[matId];
+                                return next;
+                              })
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+                {invoiceType === 'sale' && (
+                  <Card>
+                    <h3 className="font-medium mb-2">Palette Rates</h3>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <FormField label="Loose (₹/kg)">
                         <Input
                           type="number"
-                          value={rate}
+                          value={paletteRates.loose}
                           onChange={(e) =>
-                            setMaterialRates((prev) => ({
-                              ...prev,
-                              [matId]: Number((e.target as HTMLInputElement).value) || 0,
+                            setPaletteRates((p) => ({
+                              ...p,
+                              loose: Number((e.target as HTMLInputElement).value) || 0,
                             }))
                           }
                         />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            setMaterialRates((prev) => {
-                              const next = { ...prev } as Record<string, number>;
-                              delete next[matId];
-                              return next;
-                            })
+                      </FormField>
+                      <FormField label="Packed (₹/kg)">
+                        <Input
+                          type="number"
+                          value={paletteRates.packed}
+                          onChange={(e) =>
+                            setPaletteRates((p) => ({
+                              ...p,
+                              packed: Number((e.target as HTMLInputElement).value) || 0,
+                            }))
                           }
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-              {invoiceType === 'sale' && (
-                <Card>
-                  <h3 className="font-medium mb-2">Palette Rates</h3>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <FormField label="Loose (₹/kg)">
-                      <Input
-                        type="number"
-                        value={paletteRates.loose}
-                        onChange={(e) =>
-                          setPaletteRates((p) => ({
-                            ...p,
-                            loose: Number((e.target as HTMLInputElement).value) || 0,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="Packed (₹/kg)">
-                      <Input
-                        type="number"
-                        value={paletteRates.packed}
-                        onChange={(e) =>
-                          setPaletteRates((p) => ({
-                            ...p,
-                            packed: Number((e.target as HTMLInputElement).value) || 0,
-                          }))
-                        }
-                      />
-                    </FormField>
-                  </div>
-                </Card>
-              )}
-              {/* Due Date and Status removed */}
-              <div className="flex gap-2">
-                <Button type="submit" loading={saving} disabled={saving}>
-                  {editingId ? 'Update' : 'Create'}
-                </Button>
-                <Button type="button" variant="outline" onClick={onResetForm}>
-                  Reset
+                        />
+                      </FormField>
+                    </div>
+                  </Card>
+                )}
+                {/* Due Date and Status removed */}
+                <div className="flex gap-2">
+                  <Button type="submit" loading={saving} disabled={saving}>
+                    {editingId ? 'Update' : 'Create'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={onResetForm}>
+                    Reset
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+          <div className="lg:col-span-7 space-y-6">
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium">Invoices</h3>
+                <Button type="button" variant="primary" onClick={onResetForm}>
+                  New Invoice
                 </Button>
               </div>
-            </form>
-          </Modal>
-        </div>
-        <Card>
-          <h3 className="font-medium mb-2">Available Entries ({available.total})</h3>
-          {available.loading ? (
-            <Skeleton className="h-48" />
-          ) : (
-            <div className="overflow-x-auto border rounded">
-              <table className="min-w-[700px] w-full text-sm">
-                <thead className="bg-gray-50 text-left">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Entry #</th>
-                    <th className="px-3 py-2 font-semibold">Date</th>
-                    <th className="px-3 py-2 font-semibold">Vehicle</th>
-                    <th className="px-3 py-2 font-semibold">Driver</th>
-                    <th className="px-3 py-2 font-semibold">Weight (kg)</th>
-                    <th className="px-3 py-2 font-semibold">Material</th>
-                    <th className="px-3 py-2 font-semibold">Palette</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {available.entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                        No entries
-                      </td>
-                    </tr>
-                  ) : (
-                    available.entries.map((e) => (
-                      <tr key={e._id}>
-                        <td className="px-3 py-2">{e.entryNumber}</td>
-                        <td className="px-3 py-2">
-                          {new Date(e.entryDate).toLocaleDateString('en-GB')}
-                        </td>
-                        <td className="px-3 py-2">
-                          {typeof e.vehicle === 'string'
-                            ? e.vehicle
-                            : (e.vehicle?.vehicleNumber ?? '')}
-                        </td>
-                        <td className="px-3 py-2">
-                          {typeof e.vehicle === 'string' ? '' : (e.vehicle?.driverName ?? '')}
-                        </td>
-                        <td className="px-3 py-2">
-                          {(e.finalWeight ?? e.exactWeight ?? 0).toFixed(2)}
-                        </td>
-                        <td className="px-3 py-2">{e.materialType?.name ?? '—'}</td>
-                        <td className="px-3 py-2">{e.palletteType ?? '—'}</td>
+              {loading && invoices.length === 0 ? (
+                <Skeleton className="h-48" />
+              ) : (
+                <>
+                  <DataTable<Invoice> columns={columns} data={invoices} keyField="_id" />
+                  <Pagination
+                    page={page}
+                    total={total}
+                    pageSize={pageSize}
+                    onPageChange={setPage}
+                  />
+                </>
+              )}
+              {loading && invoices.length > 0 && <Spinner />}
+            </Card>
+          </div>
+          <div className="col-span-full space-y-6">
+            <Card>
+              <h3 className="font-medium mb-2">Available Entries ({available.total})</h3>
+              {available.loading ? (
+                <Skeleton className="h-48" />
+              ) : (
+                <div className="overflow-x-auto border rounded">
+                  <table className="min-w-[700px] w-full text-sm">
+                    <thead className="bg-gray-50 text-left">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Entry #</th>
+                        <th className="px-3 py-2 font-semibold">Date</th>
+                        <th className="px-3 py-2 font-semibold">Vehicle</th>
+                        <th className="px-3 py-2 font-semibold">Driver</th>
+                        <th className="px-3 py-2 font-semibold">Weight (kg)</th>
+                        <th className="px-3 py-2 font-semibold">Material</th>
+                        <th className="px-3 py-2 font-semibold">Palette</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                    </thead>
+                    <tbody>
+                      {available.entries.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
+                            No entries
+                          </td>
+                        </tr>
+                      ) : (
+                        available.entries.map((e) => (
+                          <tr key={e._id}>
+                            <td className="px-3 py-2">{e.entryNumber}</td>
+                            <td className="px-3 py-2">
+                              {new Date(e.entryDate).toLocaleDateString('en-GB')}
+                            </td>
+                            <td className="px-3 py-2">
+                              {typeof e.vehicle === 'string'
+                                ? e.vehicle
+                                : (e.vehicle?.vehicleNumber ?? '')}
+                            </td>
+                            <td className="px-3 py-2">
+                              {typeof e.vehicle === 'string' ? '' : (e.vehicle?.driverName ?? '')}
+                            </td>
+                            <td className="px-3 py-2">
+                              {(e.finalWeight ?? e.exactWeight ?? 0).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2">{e.materialType?.name ?? '—'}</td>
+                            <td className="px-3 py-2">{e.palletteType ?? '—'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
       </div>
     </>
   );

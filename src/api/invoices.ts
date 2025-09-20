@@ -27,6 +27,16 @@ export interface Invoice {
   status?: 'draft' | 'sent' | 'paid';
   invoiceNumber?: string;
   isActive: boolean;
+  // GST fields (frontend -> backend)
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: number | null;
+  // Calculated amounts (backend -> frontend)
+  cgst?: number | null;
+  sgst?: number | null;
+  igst?: number | null;
+  totalGST?: number | null;
+  grandTotal?: number | null;
 }
 
 // Create invoice - supports both explicit entries and date-range generation
@@ -132,6 +142,10 @@ export interface GenerateFromRangePayload {
   paletteRates?: { loose: number; packed: number };
   invoiceDate?: string;
   dueDate?: string;
+  // Optional GST configuration passed when generating from range
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: number | null;
 }
 
 export const generateInvoiceFromRange = async (payload: GenerateFromRangePayload) =>

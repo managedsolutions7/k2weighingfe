@@ -70,7 +70,9 @@ export const useVehiclesOptions = () => {
       try {
         setLoading(true);
         const list: Vehicle[] = await getVehicles({ isActive: true });
-        setOptions(list.map((v) => ({ value: v._id, label: `${v.vehicleCode}` })));
+        setOptions(
+          list.map((v) => ({ value: v._id, label: `${v.vehicleCode} (${v.vehicleNumber})` })),
+        );
       } finally {
         setLoading(false);
       }
